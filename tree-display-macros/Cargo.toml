@@ -1,0 +1,12 @@
+[package]
+name = "tree-display-macros"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+syn = "=1.0.86"
+quote = "=1.0.15"
+proc-macro2 = "1.0.36"
+
+[lib]
+proc-macro = true
