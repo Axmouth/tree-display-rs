@@ -9,4 +9,4 @@ edition = "2021"
 tree-display-macros = { path = "../tree-display-macros" }
 
 [dev-dependencies]
-pretty_assertions = "=1.1.0"
+diff_assert = { git = "https://github.com/anixe/diff-assert" }

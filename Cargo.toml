@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "tests",
     "tree-display",
     "tree-display-macros",
 ]

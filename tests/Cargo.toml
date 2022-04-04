@@ -1,0 +1,9 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diff_assert = { git = "https://github.com/anixe/diff-assert" }
+tree-display = { path = "../tree-display" }
+tree-display-macros = { path = "../tree-display-macros" }
