@@ -32,17 +32,17 @@ fn gen_named_fields(fields: FieldsNamed) -> impl Iterator<Item = TokenStream2> {
             quote_spanned! { name_span =>
                 let mut indent_modified = indent.to_string();
                 indent_modified.push_str("|  ");
-                write!(f, "{}├──{} ", indent, #field_name_stringified)?;
+                write!(f, "{}├──{}", indent, #field_name_stringified)?;
 
-                TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types)?;
+                tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types)?;
             }
         } else {
             quote_spanned! { name_span =>
                 let mut indent_modified = indent.to_string();
                 indent_modified.push_str("   ");
-                write!(f, "{}└──{} ", indent, #field_name_stringified)?;
+                write!(f, "{}└──{}", indent, #field_name_stringified)?;
 
-                TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types)?;
+                tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types)?;
             }
         }
     });
@@ -65,14 +65,14 @@ fn gen_unnamed_fields(fields: FieldsUnnamed) -> impl Iterator<Item = TokenStream
                     let mut indent_modified = indent.to_string();
                     indent_modified.push_str("|  ");
                     write!(f, "{}├──{}", indent, #field_accessor)?;
-                    TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types)?;
+                    tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types)?;
                 }
             } else {
                 quote_spanned! { name_span =>
                     let mut indent_modified = indent.to_string();
                     indent_modified.push_str("   ");
                     write!(f, "{}└──{}", indent, #field_accessor)?;
-                    TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types)?;
+                    tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types)?;
                 }
             }
         });
@@ -188,9 +188,9 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 });
 
                 quote! {
-                    impl TreeDisplay for #name {
+                    impl tree_display::TreeDisplay for #name {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> ::std::fmt::Result {
-                            writeln!(f, "({})", #name_stringified)?;
+                            writeln!(f, " ({})", #name_stringified)?;
                             writeln!(f, "{}|", indent)?;
                             match self {
                                 #(#variants_code)*
@@ -210,9 +210,9 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let named_fields_code = gen_named_fields(fields);
 
                 quote! {
-                    impl TreeDisplay for #name {
+                    impl tree_display::TreeDisplay for #name {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> ::std::fmt::Result {
-                            writeln!(f, "({})", #name_stringified)?;
+                            writeln!(f, " ({})", #name_stringified)?;
                             writeln!(f, "{}|", indent)?;
                             #(#named_fields_code)*
                             Ok(())
@@ -229,10 +229,10 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let name_stringified = LitStr::new(&name.to_string(), span);
                 let named_fields_code = gen_named_fields(fields);
                 quote! {
-                    impl #generics TreeDisplay for #name #generics #where_clause {
+                    impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> ::std::fmt::Result {
                             if show_types {
-                                writeln!(f, "({})", #name_stringified)?;
+                                writeln!(f, " ({})", #name_stringified)?;
                             } else {
                                 writeln!(f, "")?;
                             }
@@ -253,9 +253,9 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let name_stringified = LitStr::new(&name.to_string(), span);
                 let unnamed_fields_code = gen_unnamed_fields(fields);
                 quote! {
-                    impl #generics TreeDisplay for #name #generics #where_clause {
+                    impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> ::std::fmt::Result {
-                            writeln!(f, "({})", #name_stringified)?;
+                            writeln!(f, " ({})", #name_stringified)?;
                             writeln!(f, "{}|", indent)?;
                             #(#unnamed_fields_code)*
                             Ok(())
@@ -271,9 +271,9 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let span = name.span();
                 let name_stringified = LitStr::new(&name.to_string(), span);
                 quote! {
-                    impl #generics TreeDisplay for #name #generics #where_clause {
+                    impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> ::std::fmt::Result {
-                            writeln!(f, "({})\n{}", #name_stringified, indent)?;
+                            writeln!(f, " ({})\n{}", #name_stringified, indent)?;
                             Ok(())
                         }
                     }

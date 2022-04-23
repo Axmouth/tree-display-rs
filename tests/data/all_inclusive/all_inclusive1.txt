@@ -1,24 +1,24 @@
 
 |
-├──first 
+├──first
 |  |
-|  ├──third 
+|  ├──third
 |  |  └─1
 |  |  
-|  └──fourth 
+|  └──fourth
 |     |
-|     ├──fifth 
+|     ├──fifth
 |     |  └─2
 |     |  
-|     └──sixth 
+|     └──sixth
 |        └─3
 |        
-├──second 
+├──second
 |  |
-|  ├──fifth 
+|  ├──fifth
 |  |  └─4
 |  |  
-|  └──sixth 
+|  └──sixth
 |     └─5
 |     
 ├──tenth (TestStruct4)
@@ -27,7 +27,7 @@
 |  |  └─6
 |  |  
 |  ├──1
-|  |  └─7
+|  |  └─"7"
 |  |  
 |  └──2
 |     └─true
@@ -36,7 +36,7 @@
 |  
 ├──derp (TestStruct5)
 |  
-├──t 
+├──t
 |  └─true
 |  
 └──nineth (TestEnum1)

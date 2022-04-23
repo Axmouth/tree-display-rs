@@ -1,15 +1,21 @@
-
 #[cfg(test)]
 mod tests {
-    use tree_display::TreeDisplay;
+    // macro to test different parameters
+
     use diff_assert::try_diff;
+    use test_case::test_case;
+    use tree_display::TreeDisplay;
     use tree_display_macros::TreeDisplay;
 
     #[derive(TreeDisplay)]
     enum TestEnum1 {
         First(usize),
         Second(TestStruct2),
-        Third { seventh: usize, eigthth: usize, derp: usize },
+        Third {
+            seventh: usize,
+            eigthth: usize,
+            derp: usize,
+        },
     }
 
     #[derive(TreeDisplay)]
@@ -52,29 +58,22 @@ mod tests {
         }
     }
 
-    #[test]
-    fn all_inclusive() {
-        let expected_file = "../tests/data/all_inclusive/test.txt";
-
-        let derp = TestStruct5;
-        let data = TestStruct1 {
-            first: TestStruct2 {
-                third: 1,
-                fourth: TestStruct3 { fifth: 2, sixth: 3 },
-            },
-            second: TestStruct3 { fifth: 4, sixth: 5 },
-            tenth: TestStruct4(&6, "7".to_string(), true),
-            eleventh: TestStruct5,
-            derp: &derp,
-            t: Box::new(true),
-            nineth: TestEnum1::Third {
-                seventh: 8,
-                eigthth: 9,
-                derp: 10,
-            },
+    pub fn run_test<T: TreeDisplay>(
+        test_name: &str,
+        data: T,
+        show_types: bool,
+    ) -> Result<(), String> {
+        let expected_file = if show_types {
+            format!("../tests/data/{}_typed.txt", test_name)
+        } else {
+            format!("../tests/data/{}.txt", test_name)
         };
-        let actual = data.to_string();
-        let expected = match std::fs::read_to_string(expected_file) {
+        let actual = if show_types {
+            data.tree_print_typed()
+        } else {
+            data.tree_print()
+        };
+        let expected = match std::fs::read_to_string(&expected_file) {
             Ok(s) => s.replace('\r', ""),
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -82,25 +81,75 @@ mod tests {
                     let diff_file = format!("{expected_file}.actual");
                     eprintln!("Didn't get expected output, writing to {diff_file}",);
                     std::fs::write(diff_file, actual).expect("Unable to write file");
-                    panic!();
+                    return Err(format!("{}", e));
                 } else {
-                    panic!(
+                    let err = format!(
                         "Error reading expected output file {}: {}",
                         expected_file, e
                     );
+                    return Err(err);
                 }
             }
         };
-        eprintln!("{}", data);
 
-        if let Err(e) = try_diff!(
-            expected,
-            actual
-        ) {
-            let diff_file = format!("{expected_file}.actual");
+        let diff_file = format!("{expected_file}.actual");
+        if let Err(e) = try_diff!(expected, actual) {
             eprintln!("Didn't get expected output, writing to {diff_file}");
             std::fs::write(diff_file, actual).expect("Unable to write file");
-            panic!("{}", e);
+            return Err(e);
+        } else {
+            let _ = std::fs::remove_file(diff_file);
         }
+
+        Ok(())
+    }
+
+    #[test_case("all_inclusive/all_inclusive1", all_inclusive)]
+    #[test_case("vec/vec_usize", vec_usize)]
+    #[test_case("vec/vec_str", vec_str)]
+    fn testing<T: TreeDisplay>(test_name: &str, data_func: fn() -> T) {
+        let mut to_panic = false;
+
+        if let Err(e) = run_test(test_name, &data_func(), true) {
+            eprintln!("{}", e);
+            to_panic = true;
+        }
+
+        if let Err(e) = run_test(test_name, &data_func(), false) {
+            eprintln!("{}", e);
+            to_panic = true;
+        }
+
+        if to_panic {
+            panic!();
+        }
+    }
+
+    fn all_inclusive() -> TestStruct1<'static, bool> {
+        let derp = Box::leak(Box::new(TestStruct5));
+        TestStruct1 {
+            first: TestStruct2 {
+                third: 1,
+                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+            },
+            second: TestStruct3 { fifth: 4, sixth: 5 },
+            tenth: TestStruct4(&6, "7".to_string(), true),
+            eleventh: TestStruct5,
+            derp,
+            t: Box::new(true),
+            nineth: TestEnum1::Third {
+                seventh: 8,
+                eigthth: 9,
+                derp: 10,
+            },
+        }
+    }
+
+    fn vec_usize() -> Vec<usize> {
+        vec![1, 2, 3, 4]
+    }
+
+    fn vec_str() -> Vec<&'static str> {
+        vec!["abc", "123", "def", "ab2b"]
     }
 }
