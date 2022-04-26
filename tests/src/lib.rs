@@ -52,27 +52,13 @@ mod tests {
         pub nineth: TestEnum1,
     }
 
-    impl<'a, T: TreeDisplay> std::fmt::Display for TestStruct1<'a, T> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            self.tree_fmt(f, "", false)
-        }
-    }
-
     pub fn run_test<T: TreeDisplay>(
-        test_name: &str,
+        expected_file: &str,
         data: T,
         show_types: bool,
+        dense: bool,
     ) -> Result<(), String> {
-        let expected_file = if show_types {
-            format!("../tests/data/{}_typed.txt", test_name)
-        } else {
-            format!("../tests/data/{}.txt", test_name)
-        };
-        let actual = if show_types {
-            data.tree_print_typed()
-        } else {
-            data.tree_print()
-        };
+        let actual = data.tree_print(show_types, dense);
         let expected = match std::fs::read_to_string(&expected_file) {
             Ok(s) => s.replace('\r', ""),
             Err(e) => {
@@ -110,12 +96,22 @@ mod tests {
     fn testing<T: TreeDisplay>(test_name: &str, data_func: fn() -> T) {
         let mut to_panic = false;
 
-        if let Err(e) = run_test(test_name, &data_func(), true) {
+        if let Err(e) = run_test(&format!("../tests/data/{}_dense.txt", test_name), &data_func(), false, true) {
             eprintln!("{}", e);
             to_panic = true;
         }
 
-        if let Err(e) = run_test(test_name, &data_func(), false) {
+        if let Err(e) = run_test(&format!("../tests/data/{}_dense_typed.txt", test_name), &data_func(), true, true) {
+            eprintln!("{}", e);
+            to_panic = true;
+        }
+
+        if let Err(e) = run_test(&format!("../tests/data/{}_typed.txt", test_name), &data_func(), true, false) {
+            eprintln!("{}", e);
+            to_panic = true;
+        }
+
+        if let Err(e) = run_test(&format!("../tests/data/{}.txt", test_name), &data_func(), false, false) {
             eprintln!("{}", e);
             to_panic = true;
         }

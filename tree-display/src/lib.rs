@@ -5,31 +5,30 @@ pub trait TreeDisplay {
         &self,
         f: &mut std::fmt::Formatter<'_>,
         indent: &str,
-        show_types: bool, // Change to enum to show types, names or both? Also variants to rename any combination of the two
+        show_types: bool,
+        dense: bool, // Change to enum to show types, names or both? Also variants to rename any combination of the two
                           // flag to use edit friendly characters (better for tests)
                           // dense or sparse
     ) -> std::fmt::Result;
 
-    fn tree_print<'a>(&self) -> String where Self: Sized {
-        DataContainer(self).to_string()
-    }
-
-    fn tree_print_typed<'a>(&self) -> String where Self: Sized {
-        DataContainerWithTypes(self).to_string()
+    fn tree_print<'a>(&self, show_types: bool, dense: bool) -> String where Self: Sized {
+        DataContainer{
+            data: self,
+            show_types,
+            dense,
+        }.to_string()
     }
 }
-pub struct DataContainer<T: TreeDisplay>(pub T);
+
+pub struct DataContainer<T: TreeDisplay>{
+    pub data: T,
+    pub show_types: bool,
+    pub dense: bool,
+}
 
 impl<T: TreeDisplay> std::fmt::Display for DataContainer<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.tree_fmt(f, "", false)
-    }
-}
-pub struct DataContainerWithTypes<T: TreeDisplay>(pub T);
-
-impl<T: TreeDisplay> std::fmt::Display for DataContainerWithTypes<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.tree_fmt(f, "", true)
+        self.data.tree_fmt(f, "", self.show_types, self.dense)
     }
 }
 
@@ -37,12 +36,16 @@ macro_rules! tree_display_impl_primitive {
     ($($t:ty),*) => {
         $(
             impl TreeDisplay for $t {
-                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> std::fmt::Result {
+                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> std::fmt::Result {
                     if show_types {
-                        writeln!(f, " ({})\n{}└─{:?}\n{}", stringify!($t), indent, self, indent)
+                        writeln!(f, " ({})\n{}└─{:?}", stringify!($t), indent, self)?;
                     } else {
-                        writeln!(f, "\n{}└─{:?}\n{}", indent, self, indent)
+                        writeln!(f, "\n{}└─{:?}", indent, self)?;
                     }
+                    if !dense {
+                        writeln!(f, "{}", indent)?;
+                    }
+                    Ok(())
                 }
             }
         )*
@@ -51,7 +54,7 @@ macro_rules! tree_display_impl_primitive {
 
 tree_display_impl_primitive!(
     i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64, bool, char, &str,
-    String
+    String, ()
 );
 
 impl<T> TreeDisplay for &T
@@ -63,8 +66,9 @@ where
         f: &mut std::fmt::Formatter<'_>,
         indent: &str,
         show_types: bool,
+        dense: bool,
     ) -> std::fmt::Result {
-        (**self).tree_fmt(f, indent, show_types)
+        (**self).tree_fmt(f, indent, show_types, dense)
     }
 }
 
@@ -77,11 +81,12 @@ where
         f: &mut std::fmt::Formatter<'_>,
         indent: &str,
         show_types: bool,
+        dense: bool,
     ) -> std::fmt::Result {
         if show_types {
             write!(f, " (Box)")?;
         }
-        (**self).tree_fmt(f, &indent, show_types)
+        (**self).tree_fmt(f, &indent, show_types, dense)
     }
 }
 
@@ -95,6 +100,7 @@ where
         f: &mut std::fmt::Formatter<'_>,
         indent: &str,
         show_types: bool,
+        dense: bool,
     ) -> std::fmt::Result {
         if show_types {
             writeln!(f, "({})", "Vec")?;
@@ -111,7 +117,7 @@ where
                 new_indent = indent.to_string();
                 new_indent.push_str("   ");
             }
-            item.tree_fmt(f, &new_indent, show_types)?;
+            item.tree_fmt(f, &new_indent, show_types, dense)?;
         }
         Ok(())
     }
@@ -126,19 +132,9 @@ where
         f: &mut std::fmt::Formatter<'_>,
         indent: &str,
         show_types: bool,
+        dense: bool,
     ) -> std::fmt::Result {
-        self[..].tree_fmt(f, indent, show_types)
-    }
-}
-
-impl TreeDisplay for () {
-    fn tree_fmt<'a>(
-        &'a self,
-        f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        _: bool,
-    ) -> std::fmt::Result {
-        writeln!(f, "({})\n{}└─", stringify!(()), indent)
+        self[..].tree_fmt(f, indent, show_types, dense)
     }
 }
 
@@ -158,6 +154,7 @@ where
         f: &mut std::fmt::Formatter<'_>,
         indent: &str,
         show_types: bool,
+        dense: bool,
     ) -> std::fmt::Result {
         if show_types {
             writeln!(f, "({})", "Option")?;
@@ -166,7 +163,7 @@ where
         new_indent.push_str("|  ");
         write!(f, "{}└─", indent)?;
         if let Some(item) = self {
-            item.tree_fmt(f, &new_indent, show_types)?;
+            item.tree_fmt(f, &new_indent, show_types, dense)?;
         } else {
             write!(f, "None")?;
         }
@@ -180,14 +177,14 @@ macro_rules! tree_display_impl_tuple_primitive {
             impl<T, $($typ,)*> TreeDisplay for (T, $($typ,)* ) where
                 T: TreeDisplay,
                 $( $typ: TreeDisplay,)* {
-                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, show_types: bool) -> std::fmt::Result {
+                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> std::fmt::Result {
                     let (t, $($typ,)*) = self;
                     $(
                         write!(f, "{}├─", indent)?;
-                        $typ.tree_fmt(f, indent, show_types)?;
+                        $typ.tree_fmt(f, indent, show_types, dense)?;
                     )*
                     write!(f, "{}└─", indent)?;
-                    t.tree_fmt(f, &format!("{}  ", indent), show_types)?;
+                    t.tree_fmt(f, &format!("{}  ", indent), show_types, dense)?;
                     Ok(())
                 }
             }
