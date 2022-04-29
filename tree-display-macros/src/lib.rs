@@ -24,7 +24,7 @@ pub fn rule_system_derive(input: TokenStream) -> TokenStream {
 
 fn gen_named_fields(fields: FieldsNamed) -> impl Iterator<Item = TokenStream2> {
     let field_count = fields.named.len();
-    let data_expanded_members = fields.named.into_iter().enumerate().map(move |(i, field)| {
+    fields.named.into_iter().enumerate().map(move |(i, field)| {
         let field_name = field.ident.expect("Unreachable field name");
         let name_span = field_name.span();
         let field_name_stringified = LitStr::new(&field_name.to_string(), name_span);
@@ -33,6 +33,10 @@ fn gen_named_fields(fields: FieldsNamed) -> impl Iterator<Item = TokenStream2> {
                 let mut indent_modified = indent.to_string();
                 indent_modified.push_str("|  ");
                 write!(f, "{}├──{}", indent, #field_name_stringified)?;
+                if show_types {
+                    self.#field_name.type_name_fmt(f)?;
+                }
+                writeln!(f)?;
 
                 tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types, dense)?;
             }
@@ -41,43 +45,49 @@ fn gen_named_fields(fields: FieldsNamed) -> impl Iterator<Item = TokenStream2> {
                 let mut indent_modified = indent.to_string();
                 indent_modified.push_str("   ");
                 write!(f, "{}└──{}", indent, #field_name_stringified)?;
+                if show_types {
+                    self.#field_name.type_name_fmt(f)?;
+                }
+                writeln!(f)?;
 
                 tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types, dense)?;
             }
         }
-    });
-
-    data_expanded_members
+    })
 }
 
 fn gen_unnamed_fields(fields: FieldsUnnamed) -> impl Iterator<Item = TokenStream2> {
     let field_count = fields.unnamed.len();
-    let data_expanded_members = fields
+    fields
         .unnamed
         .into_iter()
         .enumerate()
-        .map(move |(i, field)| {
-            let field_name = field.ty;
-            let name_span = field_name.span();
+        .map(move |(i, _)| {
             let field_accessor = syn::Index::from(i);
             if field_count - 1 > i {
-                quote_spanned! { name_span =>
+                quote! {
                     let mut indent_modified = indent.to_string();
                     indent_modified.push_str("|  ");
                     write!(f, "{}├──{}", indent, #field_accessor)?;
+                    if show_types {
+                        self.#field_accessor.type_name_fmt(f)?;
+                    }
+                    writeln!(f)?;
                     tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types, dense)?;
                 }
             } else {
-                quote_spanned! { name_span =>
+                quote! {
                     let mut indent_modified = indent.to_string();
                     indent_modified.push_str("   ");
                     write!(f, "{}└──{}", indent, #field_accessor)?;
+                    if show_types {
+                        self.#field_accessor.type_name_fmt(f)?;
+                    }
+                    writeln!(f)?;
                     tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types, dense)?;
                 }
             }
-        });
-
-    data_expanded_members
+        })
 }
 
 fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
@@ -101,7 +111,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                     let variant_name = v.ident;
 
                     let variant_name_code = quote! {
-                        writeln!(f, "   └──{}", #variant_name_stringified)?;
+                        writeln!(f, "{}└──{}", indent, #variant_name_stringified)?;
                         if !dense {
                             writeln!(f, "   {}|", indent)?;
                         }
@@ -127,10 +137,15 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                                 #(#fields ,)*
                             };
                             let fields_fmt = fields.iter().enumerate().map(|(pos, ident)| {
-                                let field_stringified = LitStr::new(&ident.to_string(), ident.span());
+                                let field_stringified =
+                                    LitStr::new(&ident.to_string(), ident.span());
                                 if pos >= fields.len() - 1 {
                                     quote! {
                                         write!(f, "{}└──{}", indent_modified, #field_stringified)?;
+                                        if show_types {
+                                            #ident.type_name_fmt(f)?;
+                                        }
+                                        writeln!(f)?;
                                         let mut indent_modified2 = indent_modified.to_string();
                                         indent_modified2.push_str("   ");
                                         #ident.tree_fmt(f, &indent_modified2, show_types, dense)?;
@@ -138,6 +153,10 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                                 } else {
                                     quote! {
                                         write!(f, "{}├──{}", indent_modified, #field_stringified)?;
+                                        if show_types {
+                                            #ident.type_name_fmt(f)?;
+                                        }
+                                        writeln!(f)?;
                                         let mut indent_modified2 = indent_modified.to_string();
                                         indent_modified2.push_str("|  ");
                                         #ident.tree_fmt(f, &indent_modified2, show_types, dense)?;
@@ -192,7 +211,6 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 quote! {
                     impl tree_display::TreeDisplay for #name {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            writeln!(f, " ({})", #name_stringified)?;
                             if !dense {
                                 writeln!(f, "{}|", indent)?;
                             }
@@ -200,6 +218,10 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                                 #(#variants_code)*
                             }
                             Ok(())
+                        }
+
+                        fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(f, " ({})", #name_stringified)
                         }
                     }
                 }
@@ -216,12 +238,15 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 quote! {
                     impl tree_display::TreeDisplay for #name {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            writeln!(f, " ({})", #name_stringified)?;
                             if !dense {
                                 writeln!(f, "{}|", indent)?;
                             }
                             #(#named_fields_code)*
                             Ok(())
+                        }
+
+                        fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(f, " ({})", #name_stringified)
                         }
                     }
                 }
@@ -237,17 +262,15 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            if show_types {
-                                writeln!(f, " ({})", #name_stringified)?;
-                            } else {
-                                writeln!(f, "")?;
-                            }
-
                             if !dense {
                                 writeln!(f, "{}|", indent)?;
                             }
                             #(#named_fields_code)*
                             Ok(())
+                        }
+
+                        fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(f, " ({})", #name_stringified)
                         }
                     }
                 }
@@ -263,12 +286,15 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            writeln!(f, " ({})", #name_stringified)?;
                             if !dense {
                                 writeln!(f, "{}|", indent)?;
                             }
                             #(#unnamed_fields_code)*
                             Ok(())
+                        }
+
+                        fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(f, " ({})", #name_stringified)
                         }
                     }
                 }
@@ -283,11 +309,14 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            writeln!(f, " ({})", #name_stringified)?;
                             if !dense {
                                 writeln!(f, "{}", indent)?;
                             }
                             Ok(())
+                        }
+
+                        fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(f, " ({})", #name_stringified)
                         }
                     }
                 }

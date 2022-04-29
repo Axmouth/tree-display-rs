@@ -1,4 +1,3 @@
-
 ├──first
 |  ├──third
 |  |  └─1
@@ -12,18 +11,18 @@
 |  |  └─4
 |  └──sixth
 |     └─5
-├──tenth (TestStruct4)
+├──tenth
 |  ├──0
 |  |  └─6
 |  ├──1
 |  |  └─"7"
 |  └──2
 |     └─true
-├──eleventh (TestStruct5)
-├──derp (TestStruct5)
+├──eleventh
+├──derp
 ├──t
 |  └─true
-└──nineth (TestEnum1)
+└──nineth
    └──Third
       ├──seventh
       |  └─8

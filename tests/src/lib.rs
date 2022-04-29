@@ -93,25 +93,48 @@ mod tests {
     #[test_case("all_inclusive/all_inclusive1", all_inclusive)]
     #[test_case("vec/vec_usize", vec_usize)]
     #[test_case("vec/vec_str", vec_str)]
+    #[test_case("enum/test_enum_tuple_prim", test_enum_tuple_prim)]
+    #[test_case("enum/test_enum_nested_struct", test_enum_nested_struct)]
+    #[test_case("enum/test_enum_named_fields", test_enum_named_fields)]
     fn testing<T: TreeDisplay>(test_name: &str, data_func: fn() -> T) {
         let mut to_panic = false;
 
-        if let Err(e) = run_test(&format!("../tests/data/{}_dense.txt", test_name), &data_func(), false, true) {
+        if let Err(e) = run_test(
+            &format!("../tests/data/{}_dense.txt", test_name),
+            &data_func(),
+            false,
+            true,
+        ) {
             eprintln!("{}", e);
             to_panic = true;
         }
 
-        if let Err(e) = run_test(&format!("../tests/data/{}_dense_typed.txt", test_name), &data_func(), true, true) {
+        if let Err(e) = run_test(
+            &format!("../tests/data/{}_dense_typed.txt", test_name),
+            &data_func(),
+            true,
+            true,
+        ) {
             eprintln!("{}", e);
             to_panic = true;
         }
 
-        if let Err(e) = run_test(&format!("../tests/data/{}_typed.txt", test_name), &data_func(), true, false) {
+        if let Err(e) = run_test(
+            &format!("../tests/data/{}_typed.txt", test_name),
+            &data_func(),
+            true,
+            false,
+        ) {
             eprintln!("{}", e);
             to_panic = true;
         }
 
-        if let Err(e) = run_test(&format!("../tests/data/{}.txt", test_name), &data_func(), false, false) {
+        if let Err(e) = run_test(
+            &format!("../tests/data/{}.txt", test_name),
+            &data_func(),
+            false,
+            false,
+        ) {
             eprintln!("{}", e);
             to_panic = true;
         }
@@ -147,5 +170,24 @@ mod tests {
 
     fn vec_str() -> Vec<&'static str> {
         vec!["abc", "123", "def", "ab2b"]
+    }
+
+    fn test_enum_tuple_prim() -> TestEnum1 {
+        TestEnum1::First(1)
+    }
+
+    fn test_enum_nested_struct() -> TestEnum1 {
+        TestEnum1::Second(TestStruct2 {
+            third: 1,
+            fourth: TestStruct3 { fifth: 2, sixth: 3 },
+        })
+    }
+
+    fn test_enum_named_fields() -> TestEnum1 {
+        TestEnum1::Third {
+            seventh: 1,
+            eigthth: 2,
+            derp: 3,
+        }
     }
 }

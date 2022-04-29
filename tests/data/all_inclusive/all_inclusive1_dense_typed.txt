@@ -1,4 +1,3 @@
- (TestStruct1)
 ├──first (TestStruct2)
 |  ├──third (usize)
 |  |  └─1
