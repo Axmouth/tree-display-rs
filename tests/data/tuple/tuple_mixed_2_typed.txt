@@ -1,0 +1,61 @@
+|
+├──0 (TestStruct1)
+|  |
+|  ├──first (TestStruct2)
+|  |  |
+|  |  ├──third (usize)
+|  |  |  └─1
+|  |  |  
+|  |  └──fourth (TestStruct3)
+|  |     |
+|  |     ├──fifth (usize)
+|  |     |  └─2
+|  |     |  
+|  |     └──sixth (usize)
+|  |        └─3
+|  |        
+|  ├──second (TestStruct3)
+|  |  |
+|  |  ├──fifth (usize)
+|  |  |  └─4
+|  |  |  
+|  |  └──sixth (usize)
+|  |     └─5
+|  |     
+|  ├──tenth (TestStruct4)
+|  |  |
+|  |  ├──0 (usize)
+|  |  |  └─6
+|  |  |  
+|  |  ├──1 (String)
+|  |  |  └─"7"
+|  |  |  
+|  |  └──2 (bool)
+|  |     └─true
+|  |     
+|  ├──eleventh (TestStruct5)
+|  |  
+|  ├──derp (TestStruct5)
+|  |  
+|  ├──t (Box) -> (bool)
+|  |  └─true
+|  |  
+|  └──nineth (TestEnum1)
+|     |
+|     └──Third
+|        |
+|        ├──seventh (usize)
+|        |  └─8
+|        |  
+|        ├──eigthth (usize)
+|        |  └─9
+|        |  
+|        └──derp (usize)
+|           └─10
+|           
+├──1 (usize)
+|  └─2
+|  
+└──2 (usize)
+   └─1
+   

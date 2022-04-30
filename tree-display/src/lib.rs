@@ -80,7 +80,13 @@ tree_display_impl_primitive!(
 );
 
 impl TreeDisplay for &str {
-    fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, _: bool, dense: bool) -> std::fmt::Result {
+    fn tree_fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        indent: &str,
+        _: bool,
+        dense: bool,
+    ) -> std::fmt::Result {
         writeln!(f, "{}└─{:?}", indent, &self)?;
         if !dense {
             writeln!(f, "{}", indent)?;
@@ -244,12 +250,28 @@ macro_rules! tree_display_impl_tuple_primitive {
                 $( $typ: TreeDisplay,)* {
                 fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> std::fmt::Result {
                     let (t, $($typ,)*) = self;
+                    #[allow(unused_mut)]
+                    let mut i = 0;
+                    let mut new_indent = indent.to_string();
+                    new_indent.push_str("|  ");
+                    if !dense {
+                        writeln!(f, "{}|", indent)?;
+                    }
                     $(
-                        write!(f, "{}├─", indent)?;
-                        $typ.tree_fmt(f, indent, show_types, dense)?;
+                        write!(f, "{}├──{}", indent, i)?;
+                        if show_types {
+                            $typ::type_name_fmt(&$typ, f)?;
+                        };
+                        writeln!(f)?;
+                        $typ.tree_fmt(f, &new_indent, show_types, dense)?;
+                        i += 1;
                     )*
-                    write!(f, "{}└─", indent)?;
-                    t.tree_fmt(f, &format!("{}  ", indent), show_types, dense)?;
+                    write!(f, "{}└──{}", indent, i)?;
+                    if show_types {
+                        t.type_name_fmt(f)?;
+                    };
+                    writeln!(f)?;
+                    t.tree_fmt(f, &format!("   {}", indent), show_types, dense)?;
                     Ok(())
                 }
 

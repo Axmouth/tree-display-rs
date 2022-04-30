@@ -1,0 +1,15 @@
+|
+└──Second
+   |
+   |
+   ├──third (usize)
+   |  └─1
+   |  
+   └──fourth (TestStruct3)
+      |
+      ├──fifth (usize)
+      |  └─2
+      |  
+      └──sixth (usize)
+         └─3
+         
