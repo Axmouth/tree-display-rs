@@ -91,7 +91,7 @@ mod tests {
         Ok(())
     }
 
-    #[test_case("all_inclusive/all_inclusive1", all_inclusive)]
+    #[test_case("complex/complex_1", complex_1)]
     #[test_case("vec/vec_usize", vec_usize)]
     #[test_case("vec/vec_str", vec_str)]
     #[test_case("enum/enum_tuple_prim", enum_tuple_prim)]
@@ -168,7 +168,7 @@ mod tests {
         }
     }
 
-    fn all_inclusive() -> TestStruct1<'static, bool> {
+    fn complex_1() -> TestStruct1<'static, bool> {
         let derp = Box::leak(Box::new(TestStruct5));
         TestStruct1 {
             first: TestStruct2 {
