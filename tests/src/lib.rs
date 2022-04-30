@@ -16,6 +16,7 @@ mod tests {
             eigthth: usize,
             derp: usize,
         },
+        Fourth,
     }
 
     #[derive(TreeDisplay)]
@@ -96,6 +97,13 @@ mod tests {
     #[test_case("enum/test_enum_tuple_prim", test_enum_tuple_prim)]
     #[test_case("enum/test_enum_nested_struct", test_enum_nested_struct)]
     #[test_case("enum/test_enum_named_fields", test_enum_named_fields)]
+    #[test_case("enum/test_enum_unit", test_enum_unit)]
+    #[test_case("option/option_prim", option_prim)]
+    #[test_case("option/option_struct", option_struct)]
+    #[test_case("option/option_enum", option_enum)]
+    #[test_case("option/option_vec", option_vec)]
+    #[test_case("option/option_none", option_none)]
+    #[test_case("option/option_vec_none", option_vec_none)]
     fn testing<T: TreeDisplay>(test_name: &str, data_func: fn() -> T) {
         let mut to_panic = false;
 
@@ -189,5 +197,51 @@ mod tests {
             eigthth: 2,
             derp: 3,
         }
+    }
+    fn test_enum_unit() -> TestEnum1 {
+        TestEnum1::Fourth
+    }
+
+    fn option_prim() -> Option<usize> {
+        Some(1)
+    }
+
+    fn option_struct() -> Option<TestStruct1<'static, bool>> {
+        Some(TestStruct1 {
+            first: TestStruct2 {
+                third: 1,
+                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+            },
+            second: TestStruct3 { fifth: 4, sixth: 5 },
+            tenth: TestStruct4(&6, "7".to_string(), true),
+            eleventh: TestStruct5,
+            derp: Box::leak(Box::new(TestStruct5)),
+            t: Box::new(true),
+            nineth: TestEnum1::Third {
+                seventh: 8,
+                eigthth: 9,
+                derp: 10,
+            },
+        })
+    }
+
+    fn option_enum() -> Option<TestEnum1> {
+        Some(TestEnum1::Third {
+            seventh: 1,
+            eigthth: 2,
+            derp: 3,
+        })
+    }
+
+    fn option_vec() -> Option<Vec<usize>> {
+        Some(vec![1, 2, 3, 4])
+    }
+
+    fn option_none() -> Option<usize> {
+        None
+    }
+
+    fn option_vec_none() -> Option<Vec<usize>> {
+        None
     }
 }

@@ -113,7 +113,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                     let variant_name_code = quote! {
                         writeln!(f, "{}└──{}", indent, #variant_name_stringified)?;
                         if !dense {
-                            writeln!(f, "   {}|", indent)?;
+                            writeln!(f, "{}   |", indent)?;
                         }
                         let mut indent_modified = indent.to_string();
                         indent_modified.push_str("   ");
@@ -202,7 +202,12 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                         }
                         Fields::Unit => quote! {
                                 #name::#variant_name => {
-                                    #variant_name_code
+                                    writeln!(f, "{}└──{}", indent, #variant_name_stringified)?;
+                                    if !dense {
+                                        writeln!(f, "{}    ", indent)?;
+                                    }
+                                    let mut indent_modified = indent.to_string();
+                                    indent_modified.push_str("   ");
                             }
                         },
                     }

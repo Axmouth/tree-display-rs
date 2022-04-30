@@ -193,9 +193,10 @@ where
         dense: bool,
     ) -> std::fmt::Result {
         let mut new_indent = indent.to_string();
-        new_indent.push_str("|  ");
+        new_indent.push_str("   ");
         write!(f, "{}└─", indent)?;
         if let Some(item) = self {
+            writeln!(f, "Some")?;
             item.tree_fmt(f, &new_indent, show_types, dense)?;
         } else {
             writeln!(f, "None")?;
