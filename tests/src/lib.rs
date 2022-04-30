@@ -94,16 +94,24 @@ mod tests {
     #[test_case("all_inclusive/all_inclusive1", all_inclusive)]
     #[test_case("vec/vec_usize", vec_usize)]
     #[test_case("vec/vec_str", vec_str)]
-    #[test_case("enum/test_enum_tuple_prim", test_enum_tuple_prim)]
-    #[test_case("enum/test_enum_nested_struct", test_enum_nested_struct)]
-    #[test_case("enum/test_enum_named_fields", test_enum_named_fields)]
-    #[test_case("enum/test_enum_unit", test_enum_unit)]
+    #[test_case("enum/enum_tuple_prim", enum_tuple_prim)]
+    #[test_case("enum/enum_nested_struct", enum_nested_struct)]
+    #[test_case("enum/enum_named_fields", enum_named_fields)]
+    #[test_case("enum/enum_unit", enum_unit)]
     #[test_case("option/option_prim", option_prim)]
     #[test_case("option/option_struct", option_struct)]
     #[test_case("option/option_enum", option_enum)]
     #[test_case("option/option_vec", option_vec)]
     #[test_case("option/option_none", option_none)]
     #[test_case("option/option_vec_none", option_vec_none)]
+    #[test_case("tuple/tuple_2", tuple_2)]
+    #[test_case("tuple/tuple_3", tuple_3)]
+    #[test_case("tuple/tuple_4", tuple_4)]
+    #[test_case("tuple/tuple_5", tuple_5)]
+    #[test_case("tuple/tuple_6", tuple_6)]
+    #[test_case("tuple/tuple_7", tuple_7)]
+    #[test_case("tuple/tuple_mixed", tuple_mixed)]
+    #[test_case("tuple/tuple_mixed_2", tuple_mixed_2)]
     fn testing<T: TreeDisplay>(test_name: &str, data_func: fn() -> T) {
         let mut to_panic = false;
 
@@ -180,25 +188,25 @@ mod tests {
         vec!["abc", "123", "def", "ab2b"]
     }
 
-    fn test_enum_tuple_prim() -> TestEnum1 {
+    fn enum_tuple_prim() -> TestEnum1 {
         TestEnum1::First(1)
     }
 
-    fn test_enum_nested_struct() -> TestEnum1 {
+    fn enum_nested_struct() -> TestEnum1 {
         TestEnum1::Second(TestStruct2 {
             third: 1,
             fourth: TestStruct3 { fifth: 2, sixth: 3 },
         })
     }
 
-    fn test_enum_named_fields() -> TestEnum1 {
+    fn enum_named_fields() -> TestEnum1 {
         TestEnum1::Third {
             seventh: 1,
             eigthth: 2,
             derp: 3,
         }
     }
-    fn test_enum_unit() -> TestEnum1 {
+    fn enum_unit() -> TestEnum1 {
         TestEnum1::Fourth
     }
 
@@ -243,5 +251,67 @@ mod tests {
 
     fn option_vec_none() -> Option<Vec<usize>> {
         None
+    }
+
+    fn tuple_2() -> (usize, usize) {
+        (1, 2)
+    }
+
+    fn tuple_3() -> (usize, usize, usize) {
+        (1, 2, 3)
+    }
+
+    fn tuple_4() -> (usize, usize, usize, usize) {
+        (1, 2, 3, 4)
+    }
+
+    fn tuple_5() -> (usize, usize, usize, usize, usize) {
+        (1, 2, 3, 4, 5)
+    }
+
+    fn tuple_6() -> (usize, usize, usize, usize, usize, usize) {
+        (1, 2, 3, 4, 5, 6)
+    }
+
+    fn tuple_7() -> (usize, usize, usize, usize, usize, usize, usize) {
+        (1, 2, 3, 4, 5, 6, 7)
+    }
+
+    fn tuple_mixed() -> (usize, TestStruct1<'static, bool>, usize) {
+        (1, TestStruct1 {
+            first: TestStruct2 {
+                third: 1,
+                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+            },
+            second: TestStruct3 { fifth: 4, sixth: 5 },
+            tenth: TestStruct4(&6, "7".to_string(), true),
+            eleventh: TestStruct5,
+            derp: Box::leak(Box::new(TestStruct5)),
+            t: Box::new(true),
+            nineth: TestEnum1::Third {
+                seventh: 8,
+                eigthth: 9,
+                derp: 10,
+            },
+        }, 2)
+    }
+
+    fn tuple_mixed_2() -> (usize, TestStruct1<'static, bool>, usize) {
+        (1, TestStruct1 {
+            first: TestStruct2 {
+                third: 1,
+                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+            },
+            second: TestStruct3 { fifth: 4, sixth: 5 },
+            tenth: TestStruct4(&6, "7".to_string(), true),
+            eleventh: TestStruct5,
+            derp: Box::leak(Box::new(TestStruct5)),
+            t: Box::new(true),
+            nineth: TestEnum1::Third {
+                seventh: 8,
+                eigthth: 9,
+                derp: 10,
+            },
+        }, 2)
     }
 }

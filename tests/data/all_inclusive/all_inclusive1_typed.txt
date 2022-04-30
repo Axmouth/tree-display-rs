@@ -35,7 +35,7 @@
 |  
 ├──derp (TestStruct5)
 |  
-├──t (Box) (bool)
+├──t (Box) -> (bool)
 |  └─true
 |  
 └──nineth (TestEnum1)

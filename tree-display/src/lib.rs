@@ -75,10 +75,23 @@ tree_display_impl_primitive!(
     f64,
     bool,
     char,
-    &str,
     String,
     ()
 );
+
+impl TreeDisplay for &str {
+    fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, _: bool, dense: bool) -> std::fmt::Result {
+        writeln!(f, "{}└─{:?}", indent, &self)?;
+        if !dense {
+            writeln!(f, "{}", indent)?;
+        }
+        Ok(())
+    }
+
+    fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, " -> (str)")
+    }
+}
 
 impl<T> TreeDisplay for &T
 where
@@ -95,6 +108,7 @@ where
     }
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, " ->")?;
         T::type_name_fmt(&self, f)
     }
 }
@@ -114,7 +128,7 @@ where
     }
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, " (Box)")?;
+        write!(f, " (Box) ->")?;
         T::type_name_fmt(&self, f)
     }
 }
@@ -131,6 +145,9 @@ where
         show_types: bool,
         dense: bool,
     ) -> std::fmt::Result {
+        if !dense && !self.is_empty() {
+            writeln!(f, "{}|", indent)?;
+        }
         let mut new_indent = indent.to_string();
         new_indent.push_str("|  ");
         for (i, item) in self.iter().enumerate() {
@@ -146,6 +163,9 @@ where
             }
             writeln!(f)?;
             item.tree_fmt(f, &new_indent, show_types, dense)?;
+        }
+        if !dense && self.is_empty() {
+            writeln!(f, "{}", indent)?;
         }
         Ok(())
     }
@@ -194,12 +214,19 @@ where
     ) -> std::fmt::Result {
         let mut new_indent = indent.to_string();
         new_indent.push_str("   ");
-        write!(f, "{}└─", indent)?;
+        if !dense {
+            writeln!(f, "{}|", new_indent)?;
+        }
+        write!(f, "{}└─", new_indent)?;
         if let Some(item) = self {
             writeln!(f, "Some")?;
+            new_indent.push_str("   ");
             item.tree_fmt(f, &new_indent, show_types, dense)?;
         } else {
             writeln!(f, "None")?;
+            if !dense {
+                writeln!(f, "{}", new_indent)?;
+            }
         }
         Ok(())
     }
