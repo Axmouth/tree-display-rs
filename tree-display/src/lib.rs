@@ -207,6 +207,8 @@ where
 // TODO: Do Result/Option
 // TODO: Serde based version too (?)
 
+// TODO: Enum tuple, indicate enum ?
+
 impl<T> TreeDisplay for Option<T>
 where
     T: TreeDisplay,
@@ -239,6 +241,41 @@ where
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, " (Option)")
+    }
+}
+
+impl<T, E> TreeDisplay for Result<T, E>
+where
+    T: TreeDisplay,
+    E: TreeDisplay,
+{
+    fn tree_fmt<'a>(
+        &'a self,
+        f: &mut std::fmt::Formatter<'_>,
+        indent: &str,
+        show_types: bool,
+        dense: bool,
+    ) -> std::fmt::Result {
+        let mut new_indent = indent.to_string();
+        new_indent.push_str("   ");
+        if !dense {
+            writeln!(f, "{}|", new_indent)?;
+        }
+        write!(f, "{}└─", new_indent)?;
+        if let Ok(item) = self {
+            writeln!(f, "Ok")?;
+            new_indent.push_str("   ");
+            item.tree_fmt(f, &new_indent, show_types, dense)?;
+        } else if let Err(item) = self {
+            writeln!(f, "Err")?;
+            new_indent.push_str("   ");
+            item.tree_fmt(f, &new_indent, show_types, dense)?;
+        }
+        Ok(())
+    }
+
+    fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, " (Result)")
     }
 }
 

@@ -112,6 +112,14 @@ mod tests {
     #[test_case("tuple/tuple_7", tuple_7)]
     #[test_case("tuple/tuple_mixed", tuple_mixed)]
     #[test_case("tuple/tuple_mixed_2", tuple_mixed_2)]
+    #[test_case("result/result_ok", result_ok)]
+    #[test_case("result/result_ok_enum", result_ok_enum)]
+    #[test_case("result/result_ok_struct", result_ok_struct)]
+    #[test_case("result/result_ok_vec", result_ok_vec)]
+    #[test_case("result/result_err", result_err)]
+    #[test_case("result/result_err_enum", result_err_enum)]
+    #[test_case("result/result_err_struct", result_err_struct)]
+    #[test_case("result/result_err_vec", result_err_vec)]
     fn testing<T: TreeDisplay>(test_name: &str, data_func: fn() -> T) {
         let mut to_panic = false;
 
@@ -313,5 +321,75 @@ mod tests {
                 derp: 10,
             },
         }, 2)
+    }
+
+    fn result_ok() -> Result<usize, usize> {
+        Ok(1)
+    }
+
+    fn result_err() -> Result<usize, usize> {
+        Err(2)
+    }
+
+    fn result_ok_struct() -> Result<TestStruct1<'static, bool>, usize> {
+        Ok(TestStruct1 {
+            first: TestStruct2 {
+                third: 1,
+                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+            },
+            second: TestStruct3 { fifth: 4, sixth: 5 },
+            tenth: TestStruct4(&6, "7".to_string(), true),
+            eleventh: TestStruct5,
+            derp: Box::leak(Box::new(TestStruct5)),
+            t: Box::new(true),
+            nineth: TestEnum1::Third {
+                seventh: 8,
+                eigthth: 9,
+                derp: 10,
+            },
+        })
+    }
+
+    fn result_err_struct() -> Result<String, TestStruct1<'static, bool>> {
+        Err(TestStruct1 {
+            first: TestStruct2 {
+                third: 1,
+                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+            },
+            second: TestStruct3 { fifth: 4, sixth: 5 },
+            tenth: TestStruct4(&6, "7".to_string(), true),
+            eleventh: TestStruct5,
+            derp: Box::leak(Box::new(TestStruct5)),
+            t: Box::new(true),
+            nineth: TestEnum1::Third {
+                seventh: 8,
+                eigthth: 9,
+                derp: 10,
+            },
+        })
+    }
+
+    fn result_ok_enum() -> Result<TestEnum1, usize> {
+        Ok(TestEnum1::Third {
+            seventh: 1,
+            eigthth: 2,
+            derp: 3,
+        })
+    }
+
+    fn result_err_enum() -> Result<usize, TestEnum1> {
+        Err(TestEnum1::Third {
+            seventh: 1,
+            eigthth: 2,
+            derp: 3,
+        })
+    }
+
+    fn result_ok_vec() -> Result<Vec<usize>, usize> {
+        Ok(vec![1, 2, 3, 4])
+    }
+
+    fn result_err_vec() -> Result<Vec<String>, Vec<usize>> {
+        Err(vec![1, 2, 3, 4])
     }
 }

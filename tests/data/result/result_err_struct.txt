@@ -1,0 +1,55 @@
+   |
+   └─Err
+      |
+      ├──first
+      |  |
+      |  ├──third
+      |  |  └─1
+      |  |  
+      |  └──fourth
+      |     |
+      |     ├──fifth
+      |     |  └─2
+      |     |  
+      |     └──sixth
+      |        └─3
+      |        
+      ├──second
+      |  |
+      |  ├──fifth
+      |  |  └─4
+      |  |  
+      |  └──sixth
+      |     └─5
+      |     
+      ├──tenth
+      |  |
+      |  ├──0
+      |  |  └─6
+      |  |  
+      |  ├──1
+      |  |  └─"7"
+      |  |  
+      |  └──2
+      |     └─true
+      |     
+      ├──eleventh
+      |  
+      ├──derp
+      |  
+      ├──t
+      |  └─true
+      |  
+      └──nineth
+         |
+         └──Third
+            |
+            ├──seventh
+            |  └─8
+            |  
+            ├──eigthth
+            |  └─9
+            |  
+            └──derp
+               └─10
+               
