@@ -208,6 +208,7 @@ where
 // TODO: Serde based version too (?)
 
 // TODO: Enum tuple, indicate enum ?
+// TODO: Make sure references are shown
 
 impl<T> TreeDisplay for Option<T>
 where

@@ -1,17 +1,18 @@
 #[cfg(test)]
 mod tests {
-    // macro to test different parameters
-
     use diff_assert::try_diff;
     use test_case::test_case;
     use tree_display::TreeDisplay;
     use tree_display_macros::TreeDisplay;
 
     #[derive(TreeDisplay)]
+    //#[tree_display(transparent)]
     enum TestEnum1 {
         First(usize),
         Second(TestStruct2),
         Third {
+        #[tree_display(transparent, skip, rename(name = fdf))]
+        // #[transparent]
             seventh: usize,
             eigthth: usize,
             derp: usize,
@@ -29,7 +30,10 @@ mod tests {
 
     #[derive(TreeDisplay)]
     struct TestStruct3 {
+        //#[tree_display(transparent, skip)]
+        //#[tree_display(rename)]
         pub fifth: usize,
+        #[tree_display(rename = "fdf", skip)]
         pub sixth: usize,
     }
 
