@@ -6,13 +6,12 @@ mod tests {
     use tree_display_macros::TreeDisplay;
 
     #[derive(TreeDisplay)]
-    //#[tree_display(transparent)]
     enum TestEnum1 {
         First(usize),
         Second(TestStruct2),
         Third {
-        #[tree_display(transparent, skip, rename(name = fdf))]
-        // #[transparent]
+            // #[tree_display(transparent, skip, rename(name = fdf))]
+            #[tree_display(skip, rename(name = fdf3))]
             seventh: usize,
             eigthth: usize,
             derp: usize,
@@ -30,10 +29,8 @@ mod tests {
 
     #[derive(TreeDisplay)]
     struct TestStruct3 {
-        //#[tree_display(transparent, skip)]
-        //#[tree_display(rename)]
         pub fifth: usize,
-        #[tree_display(rename = "fdf", skip)]
+        #[tree_display(rename = "fdf")]
         pub sixth: usize,
     }
 
@@ -290,41 +287,49 @@ mod tests {
     }
 
     fn tuple_mixed() -> (usize, TestStruct1<'static, bool>, usize) {
-        (1, TestStruct1 {
-            first: TestStruct2 {
-                third: 1,
-                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+        (
+            1,
+            TestStruct1 {
+                first: TestStruct2 {
+                    third: 1,
+                    fourth: TestStruct3 { fifth: 2, sixth: 3 },
+                },
+                second: TestStruct3 { fifth: 4, sixth: 5 },
+                tenth: TestStruct4(&6, "7".to_string(), true),
+                eleventh: TestStruct5,
+                derp: Box::leak(Box::new(TestStruct5)),
+                t: Box::new(true),
+                nineth: TestEnum1::Third {
+                    seventh: 8,
+                    eigthth: 9,
+                    derp: 10,
+                },
             },
-            second: TestStruct3 { fifth: 4, sixth: 5 },
-            tenth: TestStruct4(&6, "7".to_string(), true),
-            eleventh: TestStruct5,
-            derp: Box::leak(Box::new(TestStruct5)),
-            t: Box::new(true),
-            nineth: TestEnum1::Third {
-                seventh: 8,
-                eigthth: 9,
-                derp: 10,
-            },
-        }, 2)
+            2,
+        )
     }
 
     fn tuple_mixed_2() -> (usize, TestStruct1<'static, bool>, usize) {
-        (1, TestStruct1 {
-            first: TestStruct2 {
-                third: 1,
-                fourth: TestStruct3 { fifth: 2, sixth: 3 },
+        (
+            1,
+            TestStruct1 {
+                first: TestStruct2 {
+                    third: 1,
+                    fourth: TestStruct3 { fifth: 2, sixth: 3 },
+                },
+                second: TestStruct3 { fifth: 4, sixth: 5 },
+                tenth: TestStruct4(&6, "7".to_string(), true),
+                eleventh: TestStruct5,
+                derp: Box::leak(Box::new(TestStruct5)),
+                t: Box::new(true),
+                nineth: TestEnum1::Third {
+                    seventh: 8,
+                    eigthth: 9,
+                    derp: 10,
+                },
             },
-            second: TestStruct3 { fifth: 4, sixth: 5 },
-            tenth: TestStruct4(&6, "7".to_string(), true),
-            eleventh: TestStruct5,
-            derp: Box::leak(Box::new(TestStruct5)),
-            t: Box::new(true),
-            nineth: TestEnum1::Third {
-                seventh: 8,
-                eigthth: 9,
-                derp: 10,
-            },
-        }, 2)
+            2,
+        )
     }
 
     fn result_ok() -> Result<usize, usize> {

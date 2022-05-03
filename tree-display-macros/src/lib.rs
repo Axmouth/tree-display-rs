@@ -1,15 +1,9 @@
-#![allow(unused_imports)]
 extern crate proc_macro;
 use ::proc_macro::TokenStream;
-use ::proc_macro2::{Span, TokenStream as TokenStream2, Group, TokenTree};
-use ::quote::{quote, quote_spanned, ToTokens};
-use ::syn::{
-    parse::{Parse, ParseStream, Parser},
-    punctuated::Punctuated,
-    spanned::Spanned,
-    Result, *,
-};
-
+use ::proc_macro2::{Group, Span, TokenStream as TokenStream2, TokenTree};
+use ::quote::quote;
+use ::syn::{Result, *};
+use heck::{ToKebabCase, ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 
 // TODO: implement attribute parsing
 // > transparent
@@ -133,25 +127,39 @@ impl VecExt for Vec<DisplayType> {
         let mut iter = self.iter().filter_map(|d| RenameType::from_display_type(d));
         let rename = iter.next();
         if iter.next().is_some() {
-            return Err(syn::Error::new(Span::call_site(), "Only one rename attribute is allowed"));
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one rename attribute is allowed",
+            ));
         }
         Ok(rename)
     }
-    
+
     fn try_get_rename_all(&self) -> Result<Option<RenameAllType>> {
-        let mut iter = self.iter().filter_map(|d| RenameAllType::from_display_type(d));
+        let mut iter = self
+            .iter()
+            .filter_map(|d| RenameAllType::from_display_type(d));
         let rename_all = iter.next();
         if iter.next().is_some() {
-            return Err(syn::Error::new(Span::call_site(), "Only one rename_all attribute is allowed"));
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one rename_all attribute is allowed",
+            ));
         }
         Ok(rename_all)
     }
 
     fn try_get_transparent(&self) -> Result<Option<()>> {
-        let mut iter = self.iter().filter(|&d| matches!(d, &DisplayType::Transparent)).map(|_| ());
+        let mut iter = self
+            .iter()
+            .filter(|&d| matches!(d, &DisplayType::Transparent))
+            .map(|_| ());
         let transparent = iter.next();
         if iter.next().is_some() {
-            return Err(syn::Error::new(Span::call_site(), "Only one transparent attribute is allowed"));
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one transparent attribute is allowed",
+            ));
         }
         Ok(transparent)
     }
@@ -160,7 +168,10 @@ impl VecExt for Vec<DisplayType> {
         let mut iter = self.iter().filter_map(|d| SkipType::from_display_type(d));
         let skip = iter.next();
         if iter.next().is_some() {
-            return Err(syn::Error::new(Span::call_site(), "Only one skip attribute is allowed"));
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one skip attribute is allowed",
+            ));
         }
         Ok(skip)
     }
@@ -194,6 +205,15 @@ fn respan_token(mut token: TokenTree, span: Span) -> TokenTree {
     token
 }
 
+fn rename_named_field(name: String, rename_type: RenameType) -> String {
+    match rename_type {
+        RenameType::Str(s) => s,
+        RenameType::Pascal => name.to_pascal_case(),
+        RenameType::Snake => name.to_snake_case(),
+        RenameType::Kebab => name.to_kebab_case(),
+        RenameType::Camel => name.to_lower_camel_case(),
+    }
+}
 
 fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
     let attrs = attrs
@@ -242,7 +262,7 @@ fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
                             } else {
                                 None
                             }
-                        } 
+                        }
                         syn::NestedMeta::Meta(syn::Meta::NameValue(name)) => {
                             if let syn::Lit::Str(lit_str) = &name.lit {
                                 if name.path.is_ident("rename") {
@@ -279,43 +299,96 @@ fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
     })
 }
 
-fn gen_named_fields(fields: FieldsNamed) -> Result<impl Iterator<Item = TokenStream2>> {
-    let field_count = fields.named.len();
-    let fields_code = fields.named.into_iter().enumerate().map(move |(i, field)| {
+fn gen_named_fields(fields: FieldsNamed) -> Result<TokenStream2> {
+    let field_render_tuple_code = fields.named.iter().map(|_| {
+        quote! {
+            true,
+        }
+    });
+    let fields_code = fields.named.iter().enumerate().map(move |(i, field)| {
+        // TODO: expect to error
         let attrs = parse_attributes(&field.attrs).expect("Unable to parse attributes");
         if attrs.rename_all.is_some() {
             return Err(syn::Error::new(Span::call_site(), "rename_all can only be used on a struct"));
         }
-        let field_name = field.ident.ok_or(syn::Error::new(Span::call_site(), "Fields must have a name"))?;
+        let field_name = field.ident.as_ref().ok_or(syn::Error::new(Span::call_site(), "Fields must have a name"))?;
         let name_span = field_name.span();
-        let field_name_stringified = LitStr::new(&field_name.to_string(), name_span);
-        if field_count - 1 > i {
-            Ok(quote! {
-                let mut indent_modified = indent.to_string();
-                indent_modified.push_str("|  ");
-                write!(f, "{}├──{}", indent, #field_name_stringified)?;
-                if show_types {
-                    self.#field_name.type_name_fmt(f)?;
+        let field_name_string = attrs.rename.map(|rename_type| rename_named_field(field_name.to_string(), rename_type)).unwrap_or(field_name.to_string());
+        eprintln!("{:?}", field_name_string);
+        let field_name_stringified = LitStr::new(&field_name_string, name_span);
+        let to_render_index = syn::Index::from(i);
+        let skip_code = if let Some(skip) = attrs.skip {
+            let condition = if let SkipType::If(skip_if) = skip {
+                quote! {
+                    if #skip_if (self.#field_name) {
+                        to_render. #to_render_index = false;
+                    } else {
+                        last_field = #i;
+                    }
                 }
-                writeln!(f)?;
-
-                tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types, dense)?;
-            })
+            } else if let SkipType::IfFalse = skip {
+                quote! {
+                    !(self.#field_name)
+                }
+             } else if let SkipType::IfTrue = skip {
+                quote! {
+                    (self.#field_name)
+                }
+            } else if let SkipType::IfNone = skip {
+                quote! {
+                    (self.#field_name).is_none()
+                }
+            } else if let SkipType::IfEmpty = skip {
+                quote! {
+                    (self.#field_name).is_empty()
+                }
+            } else if let SkipType::Always = skip {
+                quote! {
+                    true
+                }
+            } else {
+                unreachable!()
+            };
+            quote! {
+                if #condition {
+                    to_render. #to_render_index = false;
+                } else {
+                    last_field = #i;
+                }
+            }
         } else {
-            Ok(quote! {
-                let mut indent_modified = indent.to_string();
-                indent_modified.push_str("   ");
-                write!(f, "{}└──{}", indent, #field_name_stringified)?;
+            quote! {
+                last_field = #i;
+            }
+        };
+        let render_code = quote! {
+            let mut indent_modified = indent.to_string();
+            if to_render. #to_render_index {
+                eprintln!("{}", #field_name_stringified);
+                if last_field > #i {
+                    indent_modified.push_str("|  ");
+                    write!(f, "{}├──{}", indent, #field_name_stringified)?;
+                } else {
+                    indent_modified.push_str("   ");
+                    write!(f, "{}└──{}", indent, #field_name_stringified)?;
+                }
                 if show_types {
                     self.#field_name.type_name_fmt(f)?;
                 }
                 writeln!(f)?;
 
                 tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types, dense)?;
-            })
-        }
+            }
+        };
+        Ok((skip_code, render_code))
     }).collect::<Result<Vec<_>>>()?;
-    Ok(fields_code.into_iter())
+    let (skipping, rendering): (Vec<_>, Vec<_>) = fields_code.into_iter().unzip();
+    Ok(quote! {
+        let mut last_field: usize = 0;
+        let mut to_render = ( #(#field_render_tuple_code)* );
+        #(#skipping)*
+        #(#rendering)*
+    })
 }
 
 fn gen_unnamed_fields(fields: FieldsUnnamed) -> impl Iterator<Item = TokenStream2> {
@@ -508,7 +581,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                             if !dense {
                                 writeln!(f, "{}|", indent)?;
                             }
-                            #(#named_fields_code)*
+                            #named_fields_code
                             Ok(())
                         }
 
@@ -532,7 +605,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                             if !dense {
                                 writeln!(f, "{}|", indent)?;
                             }
-                            #(#named_fields_code)*
+                            #named_fields_code
                             Ok(())
                         }
 
