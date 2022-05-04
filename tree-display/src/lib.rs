@@ -115,7 +115,7 @@ where
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, " ->")?;
-        T::type_name_fmt(&self, f)
+        T::type_name_fmt(self, f)
     }
 }
 
@@ -135,7 +135,7 @@ where
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, " (Box) ->")?;
-        T::type_name_fmt(&self, f)
+        T::type_name_fmt(self, f)
     }
 }
 

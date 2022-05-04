@@ -20,12 +20,10 @@ use heck::{ToKebabCase, ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 pub fn rule_system_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as _);
 
-    let out = TokenStream::from(match impl_my_trait(ast) {
+    TokenStream::from(match impl_my_trait(ast) {
         Ok(it) => it,
         Err(err) => err.to_compile_error(),
-    });
-    // println!("{}", out);
-    out
+    })
 }
 
 #[allow(dead_code)]
@@ -93,23 +91,13 @@ impl RenameType {
             _ => None,
         }
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum RenameAllType {
-    Pascal,
-    Snake,
-    Kebab,
-    Camel,
-}
-
-impl RenameAllType {
-    fn from_display_type(display_type: &DisplayType) -> Option<RenameAllType> {
+    fn from_all_display_type(display_type: &DisplayType) -> Option<RenameType> {
         match display_type {
-            DisplayType::RenameAllPascal => Some(RenameAllType::Pascal),
-            DisplayType::RenameAllSnake => Some(RenameAllType::Snake),
-            DisplayType::RenameAllKebab => Some(RenameAllType::Kebab),
-            DisplayType::RenameAllCamel => Some(RenameAllType::Camel),
+            DisplayType::RenameAllPascal => Some(RenameType::Pascal),
+            DisplayType::RenameAllSnake => Some(RenameType::Snake),
+            DisplayType::RenameAllKebab => Some(RenameType::Kebab),
+            DisplayType::RenameAllCamel => Some(RenameType::Camel),
             _ => None,
         }
     }
@@ -117,14 +105,14 @@ impl RenameAllType {
 
 trait VecExt {
     fn try_get_rename(&self) -> Result<Option<RenameType>>;
-    fn try_get_rename_all(&self) -> Result<Option<RenameAllType>>;
+    fn try_get_rename_all(&self) -> Result<Option<RenameType>>;
     fn try_get_transparent(&self) -> Result<Option<()>>;
     fn try_get_skip(&self) -> Result<Option<SkipType>>;
 }
 
 impl VecExt for Vec<DisplayType> {
     fn try_get_rename(&self) -> Result<Option<RenameType>> {
-        let mut iter = self.iter().filter_map(|d| RenameType::from_display_type(d));
+        let mut iter = self.iter().filter_map(RenameType::from_display_type);
         let rename = iter.next();
         if iter.next().is_some() {
             return Err(syn::Error::new(
@@ -135,10 +123,8 @@ impl VecExt for Vec<DisplayType> {
         Ok(rename)
     }
 
-    fn try_get_rename_all(&self) -> Result<Option<RenameAllType>> {
-        let mut iter = self
-            .iter()
-            .filter_map(|d| RenameAllType::from_display_type(d));
+    fn try_get_rename_all(&self) -> Result<Option<RenameType>> {
+        let mut iter = self.iter().filter_map(RenameType::from_all_display_type);
         let rename_all = iter.next();
         if iter.next().is_some() {
             return Err(syn::Error::new(
@@ -165,7 +151,7 @@ impl VecExt for Vec<DisplayType> {
     }
 
     fn try_get_skip(&self) -> Result<Option<SkipType>> {
-        let mut iter = self.iter().filter_map(|d| SkipType::from_display_type(d));
+        let mut iter = self.iter().filter_map(SkipType::from_display_type);
         let skip = iter.next();
         if iter.next().is_some() {
             return Err(syn::Error::new(
@@ -182,7 +168,7 @@ struct DisplayAttrs {
     transparent: bool,
     skip: Option<SkipType>,
     rename: Option<RenameType>,
-    rename_all: Option<RenameAllType>,
+    rename_all: Option<RenameType>,
 }
 
 fn spanned_tokens(s: &syn::LitStr) -> parse::Result<TokenStream2> {
@@ -205,9 +191,9 @@ fn respan_token(mut token: TokenTree, span: Span) -> TokenTree {
     token
 }
 
-fn rename_named_field(name: String, rename_type: RenameType) -> String {
+fn rename_named_field(name: String, rename_type: &RenameType) -> String {
     match rename_type {
-        RenameType::Str(s) => s,
+        RenameType::Str(s) => s.clone(),
         RenameType::Pascal => name.to_pascal_case(),
         RenameType::Snake => name.to_snake_case(),
         RenameType::Kebab => name.to_kebab_case(),
@@ -299,7 +285,7 @@ fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
     })
 }
 
-fn gen_named_fields(fields: FieldsNamed) -> Result<TokenStream2> {
+fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Result<TokenStream2> {
     let field_render_tuple_code = fields.named.iter().map(|_| {
         quote! {
             true,
@@ -311,9 +297,9 @@ fn gen_named_fields(fields: FieldsNamed) -> Result<TokenStream2> {
         if attrs.rename_all.is_some() {
             return Err(syn::Error::new(Span::call_site(), "rename_all can only be used on a struct"));
         }
-        let field_name = field.ident.as_ref().ok_or(syn::Error::new(Span::call_site(), "Fields must have a name"))?;
+        let field_name = field.ident.as_ref().ok_or_else(|| syn::Error::new(Span::call_site(), "Fields must have a name"))?;
         let name_span = field_name.span();
-        let field_name_string = attrs.rename.map(|rename_type| rename_named_field(field_name.to_string(), rename_type)).unwrap_or(field_name.to_string());
+        let field_name_string = attrs.rename.as_ref().map_or(rename_all.as_ref(),  Some).map(|rename_type| rename_named_field(field_name.to_string(), rename_type)).unwrap_or_else(|| field_name.to_string());
         eprintln!("{:?}", field_name_string);
         let field_name_stringified = LitStr::new(&field_name_string, name_span);
         let to_render_index = syn::Index::from(i);
@@ -430,6 +416,8 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
         let name = ast.ident;
         let where_clause = ast.generics.where_clause.clone();
         let generics = ast.generics;
+        // TODO: handle attributes that should not be here
+        let attrs = parse_attributes(&ast.attrs)?;
 
         match ast.data {
             Data::Enum(DataEnum {
@@ -573,7 +561,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let name_span = name.span();
                 let name_stringified = LitStr::new(&name.to_string(), name_span);
 
-                let named_fields_code = gen_named_fields(fields)?;
+                let named_fields_code = gen_named_fields(fields, attrs.rename_all)?;
 
                 quote! {
                     impl tree_display::TreeDisplay for #name {
@@ -598,7 +586,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
             }) => {
                 let span = name.span();
                 let name_stringified = LitStr::new(&name.to_string(), span);
-                let named_fields_code = gen_named_fields(fields)?;
+                let named_fields_code = gen_named_fields(fields, attrs.rename_all)?;
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
                         fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {

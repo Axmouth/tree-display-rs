@@ -30,7 +30,7 @@ mod tests {
     #[derive(TreeDisplay)]
     struct TestStruct3 {
         pub fifth: usize,
-        #[tree_display(rename = "fdf")]
+        // #[tree_display(rename = "fdf")]
         pub sixth: usize,
     }
 
