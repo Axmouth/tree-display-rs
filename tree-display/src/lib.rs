@@ -1,24 +1,50 @@
+use std::num::NonZeroUsize;
+
 pub use tree_display_macros;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Context<'a> {
+    pub indent: &'a str,
+    pub sparcity: Option<NonZeroUsize>,
+    pub show_types: bool,
+    pub rename: Option<&'a str>,
+}
+
+impl Context<'_> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TransientContext {
+    pub is_flattened_and_last: Option<bool>,
+}
+
+impl TransientContext {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 
 pub trait TreeDisplay {
     fn tree_fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool, // Change to enum to show types, names or both? Also variants to rename any combination of the two
+        ctx: Context, // Change to enum to show types, names or both? Also variants to rename any combination of the two
                      // flag to use edit friendly characters (better for tests)
                      // dense or sparse
+        tctx: TransientContext,
     ) -> std::fmt::Result;
 
-    fn tree_print(&self, show_types: bool, dense: bool) -> String
+    fn tree_print(&self, ctx: Context, tctx: TransientContext) -> String
     where
         Self: Sized,
     {
         DataContainer {
             data: self,
-            show_types,
-            dense,
+            ctx,
+            tctx,
         }
         .to_string()
     }
@@ -26,15 +52,15 @@ pub trait TreeDisplay {
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
 }
 
-pub struct DataContainer<T: TreeDisplay> {
+pub struct DataContainer<'a, T: TreeDisplay> {
     pub data: T,
-    pub show_types: bool,
-    pub dense: bool,
+    pub ctx: Context<'a>,
+    pub tctx: TransientContext,
 }
 
-impl<T: TreeDisplay> std::fmt::Display for DataContainer<T> {
+impl<T: TreeDisplay> std::fmt::Display for DataContainer<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.data.tree_fmt(f, "", self.show_types, self.dense)
+        self.data.tree_fmt(f, self.ctx, self.tctx)
     }
 }
 
@@ -42,10 +68,12 @@ macro_rules! tree_display_impl_primitive {
     ($($t:ty),*) => {
         $(
             impl TreeDisplay for $t {
-                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, _: bool, dense: bool) -> std::fmt::Result {
-                    writeln!(f, "{}└─{:?}", indent, self)?;
-                    if !dense {
-                        writeln!(f, "{}", indent)?;
+                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, ctx: Context, _: TransientContext) -> std::fmt::Result {
+                    writeln!(f, "{}└─{:?}", ctx.indent, self)?;
+                    if let Some(sparcity) = ctx.sparcity {
+                        (0..sparcity.get()).try_for_each(|_| {
+                            writeln!(f, "{}", ctx.indent)
+                        })?;
                     }
                     Ok(())
                 }
@@ -83,13 +111,14 @@ impl TreeDisplay for &str {
     fn tree_fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        _: bool,
-        dense: bool,
+        ctx: Context,
+        _: TransientContext,
     ) -> std::fmt::Result {
-        writeln!(f, "{}└─{:?}", indent, &self)?;
-        if !dense {
-            writeln!(f, "{}", indent)?;
+        writeln!(f, "{}└─{:?}", ctx.indent, &self)?;
+        if let Some(sparcity) = ctx.sparcity {
+            (0..sparcity.get()).try_for_each(|_| {
+                writeln!(f, "{}", ctx.indent)
+            })?;
         }
         Ok(())
     }
@@ -106,11 +135,10 @@ where
     fn tree_fmt<'a>(
         &'a self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool,
+        ctx: Context,
+        tctx: TransientContext,
     ) -> std::fmt::Result {
-        (**self).tree_fmt(f, indent, show_types, dense)
+        (**self).tree_fmt(f, ctx, tctx)
     }
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -126,11 +154,10 @@ where
     fn tree_fmt<'a>(
         &'a self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool,
+        ctx: Context,
+        tctx: TransientContext,
     ) -> std::fmt::Result {
-        (**self).tree_fmt(f, indent, show_types, dense)
+        (**self).tree_fmt(f, ctx, tctx)
     }
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -147,31 +174,34 @@ where
     fn tree_fmt<'a>(
         &'a self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool,
+        ctx: Context,
+        _: TransientContext,
     ) -> std::fmt::Result {
-        if !dense && !self.is_empty() {
-            writeln!(f, "{}|", indent)?;
+        if let (Some(sparcity), false) = (ctx.sparcity, self.is_empty()) {
+            (0..sparcity.get()).try_for_each(|_| {
+                writeln!(f, "{}|", ctx.indent)
+            })?;
         }
-        let mut new_indent = indent.to_string();
+        let mut new_indent = ctx.indent.to_string();
         new_indent.push_str("|  ");
         for (i, item) in self.iter().enumerate() {
             if i < self.len() - 1 {
-                write!(f, "{}├─[{}]", indent, i)?;
+                write!(f, "{}├─[{}]", ctx.indent, i)?;
             } else {
-                write!(f, "{}└─[{}]", indent, i)?;
-                new_indent = indent.to_string();
+                write!(f, "{}└─[{}]", ctx.indent, i)?;
+                new_indent = ctx.indent.to_string();
                 new_indent.push_str("   ");
             }
-            if show_types {
+            if ctx.show_types {
                 item.type_name_fmt(f)?;
             }
             writeln!(f)?;
-            item.tree_fmt(f, &new_indent, show_types, dense)?;
+            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
         }
-        if !dense && self.is_empty() {
-            writeln!(f, "{}", indent)?;
+        if let (Some(sparcity), true) = (ctx.sparcity, self.is_empty()) {
+            (0..sparcity.get()).try_for_each(|_| {
+                writeln!(f, "{}", ctx.indent)
+            })?;
         }
         Ok(())
     }
@@ -188,11 +218,10 @@ where
     fn tree_fmt<'a>(
         &'a self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool,
+        ctx: Context,
+        tctx: TransientContext,
     ) -> std::fmt::Result {
-        self[..].tree_fmt(f, indent, show_types, dense)
+        self[..].tree_fmt(f, ctx, tctx)
     }
 
     fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -217,24 +246,27 @@ where
     fn tree_fmt<'a>(
         &'a self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool,
+        ctx: Context,
+        _: TransientContext,
     ) -> std::fmt::Result {
-        let mut new_indent = indent.to_string();
+        let mut new_indent = ctx.indent.to_string();
         new_indent.push_str("   ");
-        if !dense {
-            writeln!(f, "{}|", new_indent)?;
+        if let Some(sparcity) = ctx.sparcity {
+            (0..sparcity.get()).try_for_each(|_| {
+                writeln!(f, "{}|", new_indent)
+            })?;
         }
         write!(f, "{}└─", new_indent)?;
         if let Some(item) = self {
             writeln!(f, "Some")?;
             new_indent.push_str("   ");
-            item.tree_fmt(f, &new_indent, show_types, dense)?;
+            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
         } else {
             writeln!(f, "None")?;
-            if !dense {
-                writeln!(f, "{}", new_indent)?;
+            if let Some(sparcity) = ctx.sparcity {
+                (0..sparcity.get()).try_for_each(|_| {
+                    writeln!(f, "{}", new_indent)
+                })?;
             }
         }
         Ok(())
@@ -253,24 +285,25 @@ where
     fn tree_fmt<'a>(
         &'a self,
         f: &mut std::fmt::Formatter<'_>,
-        indent: &str,
-        show_types: bool,
-        dense: bool,
+        ctx: Context,
+        _: TransientContext,
     ) -> std::fmt::Result {
-        let mut new_indent = indent.to_string();
+        let mut new_indent = ctx.indent.to_string();
         new_indent.push_str("   ");
-        if !dense {
-            writeln!(f, "{}|", new_indent)?;
+        if let Some(sparcity) = ctx.sparcity {
+            (0..sparcity.get()).try_for_each(|_| {
+                writeln!(f, "{}|", new_indent)
+            })?;
         }
         write!(f, "{}└─", new_indent)?;
         if let Ok(item) = self {
             writeln!(f, "Ok")?;
             new_indent.push_str("   ");
-            item.tree_fmt(f, &new_indent, show_types, dense)?;
+            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
         } else if let Err(item) = self {
             writeln!(f, "Err")?;
             new_indent.push_str("   ");
-            item.tree_fmt(f, &new_indent, show_types, dense)?;
+            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
         }
         Ok(())
     }
@@ -282,41 +315,43 @@ where
 
 macro_rules! tree_display_impl_tuple_primitive {
     ( $($typ:ident),* $(,)? ) => {
-            #[allow(non_snake_case)]
-            impl<T, $($typ,)*> TreeDisplay for (T, $($typ,)* ) where
-                T: TreeDisplay,
-                $( $typ: TreeDisplay,)* {
-                fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> std::fmt::Result {
-                    let (t, $($typ,)*) = self;
-                    #[allow(unused_mut)]
-                    let mut i = 0;
-                    let mut new_indent = indent.to_string();
-                    new_indent.push_str("|  ");
-                    if !dense {
-                        writeln!(f, "{}|", indent)?;
-                    }
-                    $(
-                        write!(f, "{}├──{}", indent, i)?;
-                        if show_types {
-                            $typ::type_name_fmt(&$typ, f)?;
-                        };
-                        writeln!(f)?;
-                        $typ.tree_fmt(f, &new_indent, show_types, dense)?;
-                        i += 1;
-                    )*
-                    write!(f, "{}└──{}", indent, i)?;
-                    if show_types {
-                        t.type_name_fmt(f)?;
+        #[allow(non_snake_case)]
+        impl<T, $($typ,)*> TreeDisplay for (T, $($typ,)* ) where
+            T: TreeDisplay,
+            $( $typ: TreeDisplay,)* {
+            fn tree_fmt(&self, f: &mut std::fmt::Formatter<'_>, ctx: Context, _: TransientContext) -> std::fmt::Result {
+                let (t, $($typ,)*) = self;
+                #[allow(unused_mut)]
+                let mut i = 0;
+                let mut new_indent = ctx.indent.to_string();
+                new_indent.push_str("|  ");
+                if let Some(sparcity) = ctx.sparcity {
+                    (0..sparcity.get()).try_for_each(|_| {
+                        writeln!(f, "{}|", ctx.indent)
+                    })?;
+                }
+                $(
+                    write!(f, "{}├──{}", ctx.indent, i)?;
+                    if ctx.show_types {
+                        $typ::type_name_fmt(&$typ, f)?;
                     };
                     writeln!(f)?;
-                    t.tree_fmt(f, &format!("   {}", indent), show_types, dense)?;
-                    Ok(())
-                }
-
-                fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    write!(f, " (Tuple)")
-                }
+                    $typ.tree_fmt(f, Context { indent: &new_indent, ..ctx }, TransientContext::new())?;
+                    i += 1;
+                )*
+                write!(f, "{}└──{}", ctx.indent, i)?;
+                if ctx.show_types {
+                    t.type_name_fmt(f)?;
+                };
+                writeln!(f)?;
+                t.tree_fmt(f, Context {indent: &format!("   {}", ctx.indent), ..ctx}, TransientContext::new())?;
+                Ok(())
             }
+
+            fn type_name_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, " (Tuple)")
+            }
+        }
     };
 }
 

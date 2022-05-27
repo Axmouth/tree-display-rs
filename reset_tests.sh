@@ -1,0 +1,1 @@
+ fd -e actual --no-ignore-vcs --full-path --exec mv {} {.}

@@ -5,17 +5,6 @@ use ::quote::quote;
 use ::syn::{Result, *};
 use heck::{ToKebabCase, ToLowerCamelCase, ToPascalCase, ToSnakeCase};
 
-// TODO: implement attribute parsing
-// > transparent
-// makes content appear as if it was in the current object
-// > skip
-// does not render
-// > skip if
-// does not render if condition(pass function?)
-// > rename (field)
-// > rename_all (for all struct etc fields)
-// Can rename to pattern or specific tag
-// More serde like attributes
 #[proc_macro_derive(TreeDisplay, attributes(tree_display))]
 pub fn rule_system_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as _);
@@ -26,10 +15,20 @@ pub fn rule_system_derive(input: TokenStream) -> TokenStream {
     })
 }
 
+// TODO: remove fields/variants with skip on code generation level
+// TODO: Add ctx to pass parameters down
+// TODO: change dense to sparcity with Option<usize> for how many "gaps"
+// TODO: consider moving more logic downward for attributes that require field info to be implemented more easily
+// TODO: trim indent when making newline
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum DisplayType {
+    Flatten,
     Transparent,
+    Untagged,
+    Tag(String),
+    Content(String),
     Skip,
     SkipIf(TokenStream2),
     SkipIfFalse,
@@ -106,6 +105,8 @@ impl RenameType {
 trait VecExt {
     fn try_get_rename(&self) -> Result<Option<RenameType>>;
     fn try_get_rename_all(&self) -> Result<Option<RenameType>>;
+    fn try_get_flatten(&self) -> Result<Option<()>>;
+    fn try_get_tag(&self) -> Result<Option<TagType>>;
     fn try_get_transparent(&self) -> Result<Option<()>>;
     fn try_get_skip(&self) -> Result<Option<SkipType>>;
 }
@@ -135,6 +136,87 @@ impl VecExt for Vec<DisplayType> {
         Ok(rename_all)
     }
 
+    fn try_get_flatten(&self) -> Result<Option<()>> {
+        let mut iter = self
+            .iter()
+            .filter(|&d| matches!(d, &DisplayType::Flatten))
+            .map(|_| ());
+        let flatten = iter.next();
+        if iter.next().is_some() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one flatten attribute is allowed",
+            ));
+        }
+        Ok(flatten)
+    }
+
+    fn try_get_skip(&self) -> Result<Option<SkipType>> {
+        let mut iter = self.iter().filter_map(SkipType::from_display_type);
+        let skip = iter.next();
+        if iter.next().is_some() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one skip attribute is allowed",
+            ));
+        }
+        Ok(skip)
+    }
+
+    fn try_get_tag(&self) -> Result<Option<TagType>> {
+        let mut tag_iter = self.iter().filter_map(|d| match d {
+            DisplayType::Tag(s) => Some(s.clone()),
+            _ => None,
+        });
+        let tag = tag_iter.next();
+        if tag_iter.next().is_some() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one tag attribute is allowed",
+            ));
+        }
+        let mut content_iter = self.iter().filter_map(|d| match d {
+            DisplayType::Content(s) => Some(s.clone()),
+            _ => None,
+        });
+        let content = content_iter.next();
+        if content_iter.next().is_some() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one content attribute is allowed",
+            ));
+        }
+        let mut untagged_iter = self.iter().filter_map(|d| match d {
+            DisplayType::Untagged => Some(()),
+            _ => None,
+        });
+        let untagged = untagged_iter.next().is_some();
+        if untagged_iter.next().is_some() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Only one untagged attribute is allowed",
+            ));
+        }
+
+        if untagged && (tag.is_some() || content.is_some()) {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Cannot use both untagged and tag or content",
+            ));
+        } else if content.is_some() && tag.is_none() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Cannot use content without tag",
+            ));
+        } else if let (Some(tag), false) = (tag, untagged) {
+            Ok(Some(TagType::Tagged { tag, content }))
+        } else if untagged {
+            Ok(Some(TagType::Untagged))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn try_get_transparent(&self) -> Result<Option<()>> {
         let mut iter = self
             .iter()
@@ -149,26 +231,6 @@ impl VecExt for Vec<DisplayType> {
         }
         Ok(transparent)
     }
-
-    fn try_get_skip(&self) -> Result<Option<SkipType>> {
-        let mut iter = self.iter().filter_map(SkipType::from_display_type);
-        let skip = iter.next();
-        if iter.next().is_some() {
-            return Err(syn::Error::new(
-                Span::call_site(),
-                "Only one skip attribute is allowed",
-            ));
-        }
-        Ok(skip)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct DisplayAttrs {
-    transparent: bool,
-    skip: Option<SkipType>,
-    rename: Option<RenameType>,
-    rename_all: Option<RenameType>,
 }
 
 fn spanned_tokens(s: &syn::LitStr) -> parse::Result<TokenStream2> {
@@ -201,7 +263,8 @@ fn rename_named_field(name: String, rename_type: &RenameType) -> String {
     }
 }
 
-fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
+// TODO: Error for wrong attributes
+fn parse_attributes(attrs: &[syn::Attribute]) -> Result<Vec<DisplayType>> {
     let attrs = attrs
         .iter()
         .filter_map(|attr| {
@@ -213,8 +276,14 @@ fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
                 if list.path.is_ident("tree_display") {
                     Some(list.nested.into_iter().filter_map(|n| Ok(match n {
                         syn::NestedMeta::Meta(syn::Meta::Path(path)) => {
-                            if path.is_ident("transparent") {
+                            if path.is_ident("flatten") {
+                                Some(DisplayType::Flatten)
+                            } else if path.is_ident("transparent") {
                                 Some(DisplayType::Transparent)
+                            } else if path.is_ident("tag") {
+                                return Some(Err(syn::Error::new(Span::call_site(), "tag requires a string literal as an argument")));
+                            } else if path.is_ident("content") {
+                                return Some(Err(syn::Error::new(Span::call_site(), "content requires a string literal as an argument")));
                             } else if path.is_ident("skip") {
                                 Some(DisplayType::Skip)
                             } else if path.is_ident("skip_if") {
@@ -253,6 +322,10 @@ fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
                             if let syn::Lit::Str(lit_str) = &name.lit {
                                 if name.path.is_ident("rename") {
                                     Some(DisplayType::Rename(lit_str.value()))
+                                } else if name.path.is_ident("tag") {
+                                    Some(DisplayType::Tag(lit_str.value()))
+                                } else if name.path.is_ident("content") {
+                                    Some(DisplayType::Content(lit_str.value()))
                                 } else if name.path.is_ident("skip_if") {
                                     let tokens = spanned_tokens(lit_str).expect("Failed to parse tokens for skip_if");
                                     let parsed = syn::parse2(tokens).expect("Failed to parse skip_if");
@@ -275,15 +348,95 @@ fn parse_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs> {
         })
         .flatten()
         .collect::<Result<Vec<_>>>()?;
-    let attrs = attrs.into_iter().flatten().collect::<Vec<_>>();
-    println!("{:#?}", attrs);
-    Ok(DisplayAttrs {
-        transparent: attrs.try_get_transparent()?.is_some(),
-        skip: attrs.try_get_skip()?,
-        rename: attrs.try_get_rename()?,
-        rename_all: attrs.try_get_rename_all()?,
+    Ok(attrs.into_iter().flatten().collect::<Vec<_>>())
+}
+
+#[derive(Debug, Clone)]
+struct FieldAttributes {
+    flatten: bool,
+    skip: Option<SkipType>,
+    rename: Option<RenameType>,
+}
+
+#[derive(Debug, Clone)]
+enum TagType {
+    Tagged { tag: String, content: Option<String> },
+    Untagged,
+}
+
+#[derive(Debug, Clone)]
+struct ContainerAttributes {
+    transparent: bool,
+    tag: Option<TagType>,
+    rename_all: Option<RenameType>,
+}
+
+#[derive(Debug, Clone)]
+struct VariantAttributes {
+    skip: Option<SkipType>,
+    rename: Option<RenameType>,
+    rename_all: Option<RenameType>,
+}
+
+fn parse_field_attributes(attrs: &[syn::Attribute]) -> Result<FieldAttributes> {
+    let parsed_attrs = parse_attributes(attrs)?;
+
+    if parsed_attrs.try_get_rename_all()?.is_some() {
+        return Err(syn::Error::new(Span::call_site(), "rename_all is not supported for fields"));
+    }
+
+    if parsed_attrs.try_get_transparent()?.is_some() {
+        return Err(syn::Error::new(Span::call_site(), "transparent is not supported for fields"));
+    }
+
+    Ok(FieldAttributes {
+        flatten: parsed_attrs.try_get_flatten()?.is_some(),
+        skip: parsed_attrs.try_get_skip()?,
+        rename: parsed_attrs.try_get_rename()?,
     })
 }
+
+fn parse_container_attributes(attrs: &[syn::Attribute]) -> Result<ContainerAttributes> {
+    let parsed_attrs = parse_attributes(attrs)?;
+
+    if parsed_attrs.try_get_flatten()?.is_some() {
+        return Err(syn::Error::new(Span::call_site(), "flatten is not supported for containers"));
+    }
+
+    Ok(ContainerAttributes {
+        transparent: parsed_attrs.try_get_transparent()?.is_some(),
+        tag: parsed_attrs.try_get_tag()?,
+        rename_all: parsed_attrs.try_get_rename_all()?,
+    })
+}
+
+fn parse_variant_attributes(attrs: &[syn::Attribute]) -> Result<VariantAttributes> {
+    let parsed_attrs = parse_attributes(attrs)?;
+
+    if parsed_attrs.try_get_flatten()?.is_some() {
+        return Err(syn::Error::new(Span::call_site(), "flatten is not supported for variants"));
+    }
+
+    if parsed_attrs.try_get_transparent()?.is_some() {
+        return Err(syn::Error::new(Span::call_site(), "transparent is not supported for variants"));
+    }
+
+    if parsed_attrs.try_get_tag()?.is_some() {
+        return Err(syn::Error::new(Span::call_site(), "tag is not supported for variants"));
+    }
+
+    Ok(VariantAttributes {
+        skip: parsed_attrs.try_get_skip()?,
+        rename: parsed_attrs.try_get_rename()?,
+        rename_all: parsed_attrs.try_get_rename_all()?,
+    })
+}
+
+
+// TODO: fn parse_container_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs>
+// TODO: fn parse_field_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs>
+// TODO: fn parse_variant_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs>
+// TODO: specific type for each?
 
 fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Result<TokenStream2> {
     let field_render_tuple_code = fields.named.iter().map(|_| {
@@ -292,21 +445,17 @@ fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Resu
         }
     });
     let fields_code = fields.named.iter().enumerate().map(move |(i, field)| {
-        // TODO: expect to error
-        let attrs = parse_attributes(&field.attrs).expect("Unable to parse attributes");
-        if attrs.rename_all.is_some() {
-            return Err(syn::Error::new(Span::call_site(), "rename_all can only be used on a struct"));
-        }
+        let attrs = parse_field_attributes(&field.attrs)?;
+
         let field_name = field.ident.as_ref().ok_or_else(|| syn::Error::new(Span::call_site(), "Fields must have a name"))?;
         let name_span = field_name.span();
         let field_name_string = attrs.rename.as_ref().map_or(rename_all.as_ref(),  Some).map(|rename_type| rename_named_field(field_name.to_string(), rename_type)).unwrap_or_else(|| field_name.to_string());
-        eprintln!("{:?}", field_name_string);
         let field_name_stringified = LitStr::new(&field_name_string, name_span);
         let to_render_index = syn::Index::from(i);
         let skip_code = if let Some(skip) = attrs.skip {
             let condition = if let SkipType::If(skip_if) = skip {
                 quote! {
-                    if #skip_if (self.#field_name) {
+                    if #skip_if (#field_name) {
                         to_render. #to_render_index = false;
                     } else {
                         last_field = #i;
@@ -314,19 +463,19 @@ fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Resu
                 }
             } else if let SkipType::IfFalse = skip {
                 quote! {
-                    !(self.#field_name)
+                    !(#field_name)
                 }
              } else if let SkipType::IfTrue = skip {
                 quote! {
-                    (self.#field_name)
+                    (#field_name)
                 }
             } else if let SkipType::IfNone = skip {
                 quote! {
-                    (self.#field_name).is_none()
+                    (#field_name).is_none()
                 }
             } else if let SkipType::IfEmpty = skip {
                 quote! {
-                    (self.#field_name).is_empty()
+                    (#field_name).is_empty()
                 }
             } else if let SkipType::Always = skip {
                 quote! {
@@ -347,23 +496,30 @@ fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Resu
                 last_field = #i;
             }
         };
+        // TODO: do flatten at compile time, not at runtime
+        let flatten = attrs.flatten;
         let render_code = quote! {
-            let mut indent_modified = indent.to_string();
+            let mut indent_modified = ctx.indent.to_string();
             if to_render. #to_render_index {
-                eprintln!("{}", #field_name_stringified);
-                if last_field > #i {
+                if (! #flatten && last_field > #i) || tctx.is_flattened_and_last == Some(false) {
                     indent_modified.push_str("|  ");
-                    write!(f, "{}├──{}", indent, #field_name_stringified)?;
-                } else {
+                    write!(f, "{}├──{}", ctx.indent, #field_name_stringified)?;
+                } else if ! #flatten {
                     indent_modified.push_str("   ");
-                    write!(f, "{}└──{}", indent, #field_name_stringified)?;
+                    write!(f, "{}└──{}", ctx.indent, #field_name_stringified)?;
                 }
-                if show_types {
-                    self.#field_name.type_name_fmt(f)?;
+                if ! #flatten && ctx.show_types {
+                    #field_name.type_name_fmt(f)?;
                 }
-                writeln!(f)?;
+                if ! #flatten {
+                    writeln!(f)?;
+                }
 
-                tree_display::TreeDisplay::tree_fmt(&self.#field_name, f, &indent_modified, show_types, dense)?;
+                let mut tctx = tree_display::TransientContext { ..Default::default() };
+                if #flatten {
+                    tctx.is_flattened_and_last = Some(last_field <= #i);
+                }
+                tree_display::TreeDisplay::tree_fmt(&#field_name, f, tree_display::Context { indent: &indent_modified, ..ctx }, tctx)?;
             }
         };
         Ok((skip_code, render_code))
@@ -387,25 +543,25 @@ fn gen_unnamed_fields(fields: FieldsUnnamed) -> impl Iterator<Item = TokenStream
             let field_accessor = syn::Index::from(i);
             if field_count - 1 > i {
                 quote! {
-                    let mut indent_modified = indent.to_string();
+                    let mut indent_modified = ctx.indent.to_string();
                     indent_modified.push_str("|  ");
-                    write!(f, "{}├──{}", indent, #field_accessor)?;
-                    if show_types {
+                    write!(f, "{}├──{}", ctx.indent, #field_accessor)?;
+                    if ctx.show_types {
                         self.#field_accessor.type_name_fmt(f)?;
                     }
                     writeln!(f)?;
-                    tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types, dense)?;
+                    tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, tree_display::Context { indent: &indent_modified, ..ctx }, Default::default())?;
                 }
             } else {
                 quote! {
-                    let mut indent_modified = indent.to_string();
+                    let mut indent_modified = ctx.indent.to_string();
                     indent_modified.push_str("   ");
-                    write!(f, "{}└──{}", indent, #field_accessor)?;
-                    if show_types {
+                    write!(f, "{}└──{}", ctx.indent, #field_accessor)?;
+                    if ctx.show_types {
                         self.#field_accessor.type_name_fmt(f)?;
                     }
                     writeln!(f)?;
-                    tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, &indent_modified, show_types, dense)?;
+                    tree_display::TreeDisplay::tree_fmt(&self.#field_accessor, f, tree_display::Context { indent: &indent_modified, ..ctx }, Default::default())?;
                 }
             }
         })
@@ -416,8 +572,7 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
         let name = ast.ident;
         let where_clause = ast.generics.where_clause.clone();
         let generics = ast.generics;
-        // TODO: handle attributes that should not be here
-        let attrs = parse_attributes(&ast.attrs)?;
+        let attrs = parse_container_attributes(&ast.attrs)?;
 
         match ast.data {
             Data::Enum(DataEnum {
@@ -434,18 +589,22 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                     let variant_name = v.ident;
 
                     let variant_name_code = quote! {
-                        writeln!(f, "{}└──{}", indent, #variant_name_stringified)?;
-                        if !dense {
-                            writeln!(f, "{}   |", indent)?;
+                        writeln!(f, "{}└──{}", ctx.indent, #variant_name_stringified)?;
+                        if let Some(sparcity) = ctx.sparcity {
+                            (0..sparcity.get()).try_for_each(|_| {
+                                writeln!(f, "{}   |", ctx.indent)
+                            })?;
                         }
-                        let mut indent_modified = indent.to_string();
+                        let mut indent_modified = ctx.indent.to_string();
                         indent_modified.push_str("   ");
                     };
 
                     match v.fields {
-                        Fields::Named(named) => {
+                        Fields::Named(fields) => {
+                            let span = name.span();
+                            let name_stringified = LitStr::new(&name.to_string(), span);
                             let mut i = 0;
-                            let fields = named
+                            let fields_with_names = fields
                                 .named
                                 .iter()
                                 .map(|f| f.ident.clone())
@@ -457,42 +616,22 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                                 })
                                 .collect::<Vec<_>>();
                             let destructure_code = quote! {
-                                #(#fields ,)*
+                                #(#fields_with_names ,)*
                             };
-                            let fields_fmt = fields.iter().enumerate().map(|(pos, ident)| {
-                                let field_stringified =
-                                    LitStr::new(&ident.to_string(), ident.span());
-                                if pos >= fields.len() - 1 {
-                                    quote! {
-                                        write!(f, "{}└──{}", indent_modified, #field_stringified)?;
-                                        if show_types {
-                                            #ident.type_name_fmt(f)?;
-                                        }
-                                        writeln!(f)?;
-                                        let mut indent_modified2 = indent_modified.to_string();
-                                        indent_modified2.push_str("   ");
-                                        #ident.tree_fmt(f, &indent_modified2, show_types, dense)?;
-                                    }
-                                } else {
-                                    quote! {
-                                        write!(f, "{}├──{}", indent_modified, #field_stringified)?;
-                                        if show_types {
-                                            #ident.type_name_fmt(f)?;
-                                        }
-                                        writeln!(f)?;
-                                        let mut indent_modified2 = indent_modified.to_string();
-                                        indent_modified2.push_str("|  ");
-                                        #ident.tree_fmt(f, &indent_modified2, show_types, dense)?;
-                                    }
-                                }
-                            });
 
-                            quote! {
+                            let named_fields_code = gen_named_fields(fields, attrs.rename_all.clone())?;
+                            Ok(quote! {
                                 #name::#variant_name { #destructure_code } => {
                                     #variant_name_code
-                                    #(#fields_fmt)*
+                                    let mut indent = ctx.indent.to_string();
+                                    indent.push_str("   ");
+                                    let ctx = tree_display::Context {
+                                        indent: &indent,
+                                        ..ctx
+                                    };
+                                    #named_fields_code
                                 }
-                            }
+                            })
                         }
                         Fields::Unnamed(unnamed) => {
                             let mut i = 0;
@@ -512,35 +651,38 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                             };
                             let fields_fmt = fields.iter().map(|ident| {
                                 quote! {
-                                    #ident.tree_fmt(f, &indent_modified, show_types, dense)?;
+                                    #ident.tree_fmt(f, tree_display::Context { indent: &indent_modified, ..ctx }, Default::default())?;
                                 }
                             });
 
-                            quote! {
+                            Ok(quote! {
                                 #name::#variant_name(#destructure_code) => {
                                     #variant_name_code
                                     #(#fields_fmt)*
                                 }
-                            }
+                            })
                         }
-                        Fields::Unit => quote! {
+                        Fields::Unit => Ok(quote! {
                                 #name::#variant_name => {
-                                    writeln!(f, "{}└──{}", indent, #variant_name_stringified)?;
-                                    if !dense {
-                                        writeln!(f, "{}    ", indent)?;
+                                    writeln!(f, "{}└──{}", ctx.indent, #variant_name_stringified)?;
+                                    if let Some(sparcity) = ctx.sparcity {
+                                        (0..sparcity.get()).try_for_each(|_| {
+                                            writeln!(f, "{}", ctx.indent)
+                                        })?;
                                     }
-                                    let mut indent_modified = indent.to_string();
-                                    indent_modified.push_str("   ");
+                                    let mut indent_modified = ctx.indent.to_string();
                             }
-                        },
+                        }),
                     }
-                });
+                }).collect::<Result<Vec<_>>>()?;
 
                 quote! {
                     impl tree_display::TreeDisplay for #name {
-                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            if !dense {
-                                writeln!(f, "{}|", indent)?;
+                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, ctx: tree_display::Context, tctx: tree_display::TransientContext) -> ::std::fmt::Result {
+                            if let Some(sparcity) = ctx.sparcity {
+                                (0..sparcity.get()).try_for_each(|_| {
+                                    writeln!(f, "{}|", ctx.indent)
+                                })?;
                             }
                             match self {
                                 #(#variants_code)*
@@ -561,13 +703,23 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let name_span = name.span();
                 let name_stringified = LitStr::new(&name.to_string(), name_span);
 
+                let fields_iter = fields.named.iter().map(|f| f.ident.clone());
+
+                let field_code = quote! {
+                    let Self { #(#fields_iter ,)* } = self;
+                };
+
                 let named_fields_code = gen_named_fields(fields, attrs.rename_all)?;
 
                 quote! {
                     impl tree_display::TreeDisplay for #name {
-                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            if !dense {
-                                writeln!(f, "{}|", indent)?;
+                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, ctx: tree_display::Context, tctx: tree_display::TransientContext) -> ::std::fmt::Result {
+                            #field_code
+
+                            if let Some(sparcity) = ctx.sparcity {
+                                (0..sparcity.get()).try_for_each(|_| {
+                                    writeln!(f, "{}|", ctx.indent)
+                                })?;
                             }
                             #named_fields_code
                             Ok(())
@@ -584,14 +736,26 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 fields: Fields::Named(fields),
                 ..
             }) => {
+
                 let span = name.span();
                 let name_stringified = LitStr::new(&name.to_string(), span);
+
+                let fields_iter = fields.named.iter().map(|f| f.ident.clone());
+
+                let field_code = quote! {
+                    let Self { #(#fields_iter ,)* } = self;
+                };
+
                 let named_fields_code = gen_named_fields(fields, attrs.rename_all)?;
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
-                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            if !dense {
-                                writeln!(f, "{}|", indent)?;
+                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, ctx: tree_display::Context, tctx: tree_display::TransientContext) -> ::std::fmt::Result {
+                            #field_code
+
+                            if let Some(sparcity) = ctx.sparcity {
+                                (0..sparcity.get()).try_for_each(|_| {
+                                    writeln!(f, "{}|", ctx.indent)
+                                })?;
                             }
                             #named_fields_code
                             Ok(())
@@ -613,9 +777,11 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let unnamed_fields_code = gen_unnamed_fields(fields);
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
-                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            if !dense {
-                                writeln!(f, "{}|", indent)?;
+                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, ctx: tree_display::Context, tctx: tree_display::TransientContext) -> ::std::fmt::Result {
+                            if let Some(sparcity) = ctx.sparcity {
+                                (0..sparcity.get()).try_for_each(|_| {
+                                    writeln!(f, "{}|", ctx.indent)
+                                })?;
                             }
                             #(#unnamed_fields_code)*
                             Ok(())
@@ -636,9 +802,11 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 let name_stringified = LitStr::new(&name.to_string(), span);
                 quote! {
                     impl #generics tree_display::TreeDisplay for #name #generics #where_clause {
-                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, indent: &str, show_types: bool, dense: bool) -> ::std::fmt::Result {
-                            if !dense {
-                                writeln!(f, "{}", indent)?;
+                        fn tree_fmt(&self, f: &mut ::std::fmt::Formatter<'_>, ctx: tree_display::Context, tctx: tree_display::TransientContext) -> ::std::fmt::Result {
+                            if let Some(sparcity) = ctx.sparcity {
+                                (0..sparcity.get()).try_for_each(|_| {
+                                    writeln!(f, "{}", ctx.indent)
+                                })?;
                             }
                             Ok(())
                         }

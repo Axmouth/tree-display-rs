@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
+
     use diff_assert::try_diff;
     use test_case::test_case;
-    use tree_display::TreeDisplay;
+    use tree_display::{TreeDisplay, Context, TransientContext};
     use tree_display_macros::TreeDisplay;
 
     #[derive(TreeDisplay)]
@@ -10,7 +12,6 @@ mod tests {
         First(usize),
         Second(TestStruct2),
         Third {
-            // #[tree_display(transparent, skip, rename(name = fdf))]
             #[tree_display(skip, rename(name = fdf3))]
             seventh: usize,
             eigthth: usize,
@@ -60,7 +61,17 @@ mod tests {
         show_types: bool,
         dense: bool,
     ) -> Result<(), String> {
-        let actual = data.tree_print(show_types, dense);
+        let actual = data.tree_print(Context {
+            indent:  "",
+            rename: None,
+            show_types,
+            sparcity: if dense {
+                None
+            } else {
+                Some(NonZeroUsize::new(1).expect("sparcity must be non-zero"))
+            },
+        },
+        TransientContext::new());
         let expected = match std::fs::read_to_string(&expected_file) {
             Ok(s) => s.replace('\r', ""),
             Err(e) => {
@@ -92,6 +103,7 @@ mod tests {
         Ok(())
     }
 
+    // TODO: tests for attributes
     #[test_case("complex/complex_1", complex_1)]
     #[test_case("vec/vec_usize", vec_usize)]
     #[test_case("vec/vec_str", vec_str)]
