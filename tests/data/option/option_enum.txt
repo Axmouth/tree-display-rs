@@ -1,14 +1,12 @@
+|
+└──Third
    |
-   └─Some
-      |
-      └──Third
-         |
-         ├──seventh
-         |  └─1
-         |  
-         ├──eigthth
-         |  └─2
-         |  
-         └──derp
-            └─3
-            
+   ├──seventh
+   |  └─1
+   |  
+   ├──eigthth
+   |  └─2
+   |  
+   └──derp
+      └─3
+      

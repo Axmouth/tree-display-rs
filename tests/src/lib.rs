@@ -4,7 +4,7 @@ mod tests {
 
     use diff_assert::try_diff;
     use test_case::test_case;
-    use tree_display::{TreeDisplay, Context, TransientContext};
+    use tree_display::{Context, TransientContext, TreeDisplay};
     use tree_display_macros::TreeDisplay;
 
     #[derive(TreeDisplay)]
@@ -61,17 +61,19 @@ mod tests {
         show_types: bool,
         dense: bool,
     ) -> Result<(), String> {
-        let actual = data.tree_print(Context {
-            indent:  "",
-            rename: None,
-            show_types,
-            sparcity: if dense {
-                None
-            } else {
-                Some(NonZeroUsize::new(1).expect("sparcity must be non-zero"))
+        let actual = data.tree_print(
+            Context {
+                indent: "",
+                rename: None,
+                show_types,
+                sparcity: if dense {
+                    None
+                } else {
+                    Some(NonZeroUsize::new(1).expect("sparcity must be non-zero"))
+                },
             },
-        },
-        TransientContext::new());
+            TransientContext::new(),
+        );
         let expected = match std::fs::read_to_string(&expected_file) {
             Ok(s) => s.replace('\r', ""),
             Err(e) => {

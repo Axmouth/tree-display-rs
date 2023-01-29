@@ -199,15 +199,15 @@ impl VecExt for Vec<DisplayType> {
         }
 
         if untagged && (tag.is_some() || content.is_some()) {
-            return Err(syn::Error::new(
+            Err(syn::Error::new(
                 Span::call_site(),
                 "Cannot use both untagged and tag or content",
-            ));
+            ))
         } else if content.is_some() && tag.is_none() {
-            return Err(syn::Error::new(
+            Err(syn::Error::new(
                 Span::call_site(),
                 "Cannot use content without tag",
-            ));
+            ))
         } else if let (Some(tag), false) = (tag, untagged) {
             Ok(Some(TagType::Tagged { tag, content }))
         } else if untagged {
@@ -360,7 +360,10 @@ struct FieldAttributes {
 
 #[derive(Debug, Clone)]
 enum TagType {
-    Tagged { tag: String, content: Option<String> },
+    Tagged {
+        tag: String,
+        content: Option<String>,
+    },
     Untagged,
 }
 
@@ -382,11 +385,17 @@ fn parse_field_attributes(attrs: &[syn::Attribute]) -> Result<FieldAttributes> {
     let parsed_attrs = parse_attributes(attrs)?;
 
     if parsed_attrs.try_get_rename_all()?.is_some() {
-        return Err(syn::Error::new(Span::call_site(), "rename_all is not supported for fields"));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "rename_all is not supported for fields",
+        ));
     }
 
     if parsed_attrs.try_get_transparent()?.is_some() {
-        return Err(syn::Error::new(Span::call_site(), "transparent is not supported for fields"));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "transparent is not supported for fields",
+        ));
     }
 
     Ok(FieldAttributes {
@@ -400,7 +409,10 @@ fn parse_container_attributes(attrs: &[syn::Attribute]) -> Result<ContainerAttri
     let parsed_attrs = parse_attributes(attrs)?;
 
     if parsed_attrs.try_get_flatten()?.is_some() {
-        return Err(syn::Error::new(Span::call_site(), "flatten is not supported for containers"));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "flatten is not supported for containers",
+        ));
     }
 
     Ok(ContainerAttributes {
@@ -414,15 +426,24 @@ fn parse_variant_attributes(attrs: &[syn::Attribute]) -> Result<VariantAttribute
     let parsed_attrs = parse_attributes(attrs)?;
 
     if parsed_attrs.try_get_flatten()?.is_some() {
-        return Err(syn::Error::new(Span::call_site(), "flatten is not supported for variants"));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "flatten is not supported for variants",
+        ));
     }
 
     if parsed_attrs.try_get_transparent()?.is_some() {
-        return Err(syn::Error::new(Span::call_site(), "transparent is not supported for variants"));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "transparent is not supported for variants",
+        ));
     }
 
     if parsed_attrs.try_get_tag()?.is_some() {
-        return Err(syn::Error::new(Span::call_site(), "tag is not supported for variants"));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "tag is not supported for variants",
+        ));
     }
 
     Ok(VariantAttributes {
@@ -431,7 +452,6 @@ fn parse_variant_attributes(attrs: &[syn::Attribute]) -> Result<VariantAttribute
         rename_all: parsed_attrs.try_get_rename_all()?,
     })
 }
-
 
 // TODO: fn parse_container_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs>
 // TODO: fn parse_field_attributes(attrs: &[syn::Attribute]) -> Result<DisplayAttrs>
@@ -444,9 +464,16 @@ fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Resu
             true,
         }
     });
-    let fields_code = fields.named.iter().enumerate().map(move |(i, field)| {
-        let attrs = parse_field_attributes(&field.attrs)?;
 
+    let mut fields_with_attrs = fields
+        .named
+        .iter()
+        .map(|field| parse_field_attributes(&field.attrs).map(|attrs| (field, attrs)))
+        .collect::<Result<Vec<_>>>()?;
+
+    fields_with_attrs.retain(|(_, attrs)| !matches!(attrs.skip, Some(SkipType::Always)));
+
+    let fields_code = fields_with_attrs.into_iter().enumerate().map(move |(i, (field, attrs))| {
         let field_name = field.ident.as_ref().ok_or_else(|| syn::Error::new(Span::call_site(), "Fields must have a name"))?;
         let name_span = field_name.span();
         let field_name_string = attrs.rename.as_ref().map_or(rename_all.as_ref(),  Some).map(|rename_type| rename_named_field(field_name.to_string(), rename_type)).unwrap_or_else(|| field_name.to_string());
@@ -476,10 +503,6 @@ fn gen_named_fields(fields: FieldsNamed, rename_all: Option<RenameType>) -> Resu
             } else if let SkipType::IfEmpty = skip {
                 quote! {
                     (#field_name).is_empty()
-                }
-            } else if let SkipType::Always = skip {
-                quote! {
-                    true
                 }
             } else {
                 unreachable!()
@@ -736,7 +759,6 @@ fn impl_my_trait(ast: DeriveInput) -> Result<TokenStream2> {
                 fields: Fields::Named(fields),
                 ..
             }) => {
-
                 let span = name.span();
                 let name_stringified = LitStr::new(&name.to_string(), span);
 

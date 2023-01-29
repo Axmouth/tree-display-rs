@@ -32,8 +32,8 @@ pub trait TreeDisplay {
         &self,
         f: &mut std::fmt::Formatter<'_>,
         ctx: Context, // Change to enum to show types, names or both? Also variants to rename any combination of the two
-                     // flag to use edit friendly characters (better for tests)
-                     // dense or sparse
+        // flag to use edit friendly characters (better for tests)
+        // dense or sparse
         tctx: TransientContext,
     ) -> std::fmt::Result;
 
@@ -116,9 +116,7 @@ impl TreeDisplay for &str {
     ) -> std::fmt::Result {
         writeln!(f, "{}└─{:?}", ctx.indent, &self)?;
         if let Some(sparcity) = ctx.sparcity {
-            (0..sparcity.get()).try_for_each(|_| {
-                writeln!(f, "{}", ctx.indent)
-            })?;
+            (0..sparcity.get()).try_for_each(|_| writeln!(f, "{}", ctx.indent))?;
         }
         Ok(())
     }
@@ -178,9 +176,7 @@ where
         _: TransientContext,
     ) -> std::fmt::Result {
         if let (Some(sparcity), false) = (ctx.sparcity, self.is_empty()) {
-            (0..sparcity.get()).try_for_each(|_| {
-                writeln!(f, "{}|", ctx.indent)
-            })?;
+            (0..sparcity.get()).try_for_each(|_| writeln!(f, "{}|", ctx.indent))?;
         }
         let mut new_indent = ctx.indent.to_string();
         new_indent.push_str("|  ");
@@ -196,12 +192,17 @@ where
                 item.type_name_fmt(f)?;
             }
             writeln!(f)?;
-            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
+            item.tree_fmt(
+                f,
+                Context {
+                    indent: &new_indent,
+                    ..ctx
+                },
+                TransientContext::new(),
+            )?;
         }
         if let (Some(sparcity), true) = (ctx.sparcity, self.is_empty()) {
-            (0..sparcity.get()).try_for_each(|_| {
-                writeln!(f, "{}", ctx.indent)
-            })?;
+            (0..sparcity.get()).try_for_each(|_| writeln!(f, "{}", ctx.indent))?;
         }
         Ok(())
     }
@@ -232,8 +233,6 @@ where
 // TODO: Do maps, sets, vectors, arrays etc.
 // TODO: Do for references too and test
 // TODO: Indication for references/pointers?
-// TODO: Do Box and such
-// TODO: Do Result/Option
 // TODO: Serde based version too (?)
 
 // TODO: Enum tuple, indicate enum ?
@@ -249,24 +248,23 @@ where
         ctx: Context,
         _: TransientContext,
     ) -> std::fmt::Result {
-        let mut new_indent = ctx.indent.to_string();
-        new_indent.push_str("   ");
-        if let Some(sparcity) = ctx.sparcity {
-            (0..sparcity.get()).try_for_each(|_| {
-                writeln!(f, "{}|", new_indent)
-            })?;
-        }
-        write!(f, "{}└─", new_indent)?;
+        let new_indent = ctx.indent.to_string();
         if let Some(item) = self {
-            writeln!(f, "Some")?;
-            new_indent.push_str("   ");
-            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
+            item.tree_fmt(
+                f,
+                Context {
+                    indent: &new_indent,
+                    ..ctx
+                },
+                TransientContext::new(),
+            )?;
         } else {
-            writeln!(f, "None")?;
             if let Some(sparcity) = ctx.sparcity {
-                (0..sparcity.get()).try_for_each(|_| {
-                    writeln!(f, "{}", new_indent)
-                })?;
+                (0..sparcity.get()).try_for_each(|_| writeln!(f, "{}|", new_indent))?;
+            }
+            write!(f, "{}└─None", new_indent)?;
+            if let Some(sparcity) = ctx.sparcity {
+                (0..sparcity.get()).try_for_each(|_| writeln!(f, "{}", new_indent))?;
             }
         }
         Ok(())
@@ -291,19 +289,31 @@ where
         let mut new_indent = ctx.indent.to_string();
         new_indent.push_str("   ");
         if let Some(sparcity) = ctx.sparcity {
-            (0..sparcity.get()).try_for_each(|_| {
-                writeln!(f, "{}|", new_indent)
-            })?;
+            (0..sparcity.get()).try_for_each(|_| writeln!(f, "{}|", new_indent))?;
         }
         write!(f, "{}└─", new_indent)?;
         if let Ok(item) = self {
             writeln!(f, "Ok")?;
             new_indent.push_str("   ");
-            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
+            item.tree_fmt(
+                f,
+                Context {
+                    indent: &new_indent,
+                    ..ctx
+                },
+                TransientContext::new(),
+            )?;
         } else if let Err(item) = self {
             writeln!(f, "Err")?;
             new_indent.push_str("   ");
-            item.tree_fmt(f, Context {indent: &new_indent, ..ctx}, TransientContext::new())?;
+            item.tree_fmt(
+                f,
+                Context {
+                    indent: &new_indent,
+                    ..ctx
+                },
+                TransientContext::new(),
+            )?;
         }
         Ok(())
     }

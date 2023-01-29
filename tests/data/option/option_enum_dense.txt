@@ -1,8 +1,7 @@
-   └─Some
-      └──Third
-         ├──seventh
-         |  └─1
-         ├──eigthth
-         |  └─2
-         └──derp
-            └─3
+└──Third
+   ├──seventh
+   |  └─1
+   ├──eigthth
+   |  └─2
+   └──derp
+      └─3
